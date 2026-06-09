@@ -507,7 +507,7 @@ const FullCalendar = () => {
             </div>
           </div>
         );
-      })}
+      })()}
 
       {/* --------------------- SCHEDULE VIEW --------------------- */}
       {viewMode === 'schedule' && (
