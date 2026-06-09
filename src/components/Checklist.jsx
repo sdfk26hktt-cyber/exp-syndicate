@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { useAgent } from '../context/AgentContext';
+import { useAuth } from '../context/AuthContext';
+import { useCommunity } from '../context/CommunityContext';
 import { CheckCircle, Circle, AlertCircle, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import TaskRunnerModal from './TaskRunnerModal';
 
 const Checklist = () => {
   const { phases, toggleItem, currentAgentData } = useAgent();
+  const { currentUser } = useAuth();
+  const { sendMessage } = useCommunity();
   const [expandedItems, setExpandedItems] = useState({});
   const [activeTaskRunner, setActiveTaskRunner] = useState(null);
 
@@ -22,6 +26,9 @@ const Checklist = () => {
       setActiveTaskRunner({ phaseId, task: item });
     } else {
       // Otherwise fallback to simple toggle
+      if (!item.completed && currentUser) {
+        sendMessage(currentUser.id, currentUser.name, `Agent completed task: ${item.text}`, false, true);
+      }
       toggleItem(phaseId, item.id);
     }
   };
@@ -29,8 +36,7 @@ const Checklist = () => {
   const sponsor = currentAgentData?.sponsor || { name: 'Brian Burds', phone: '(915) 256-6989', email: 'brian@brianburds.com' };
 
   return (
-    <div className="animate-fade-in" style={{ paddingBottom: '80px' }}>
-      
+    <>
       {activeTaskRunner && (
         <TaskRunnerModal 
           phaseId={activeTaskRunner.phaseId} 
@@ -38,8 +44,9 @@ const Checklist = () => {
           onClose={() => setActiveTaskRunner(null)} 
         />
       )}
-
-      <div className="mb-6">
+      <div className="animate-fade-in" style={{ paddingBottom: '80px' }}>
+        
+        <div className="mb-6">
         <h1 className="text-2xl font-semibold mb-2">The Onboarding Playbook</h1>
         <p className="text-muted">Your step-by-step guide to joining eXp Realty in Texas.</p>
       </div>
@@ -138,7 +145,8 @@ const Checklist = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

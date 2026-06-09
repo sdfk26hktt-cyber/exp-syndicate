@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, ChevronRight, ChevronLeft, CheckCircle, ExternalLink } from 'lucide-react';
 import { useAgent } from '../context/AgentContext';
+import { useAuth } from '../context/AuthContext';
+import { useCommunity } from '../context/CommunityContext';
 
 const TaskRunnerModal = ({ task, phaseId, onClose }) => {
   const { toggleItem, updateTaskStep } = useAgent();
+  const { currentUser } = useAuth();
+  const { sendMessage } = useCommunity();
   const [currentStep, setCurrentStep] = useState(task.currentStepIndex || 0);
 
   // If task doesn't have steps, we just show a generic finish screen.
@@ -32,6 +36,9 @@ const TaskRunnerModal = ({ task, phaseId, onClose }) => {
   const handleComplete = () => {
     // If not already completed, toggle it
     if (!task.completed) {
+      if (currentUser) {
+        sendMessage(currentUser.id, currentUser.name, `Agent completed interactive task: ${task.text}`, false, true);
+      }
       toggleItem(phaseId, task.id);
     }
     onClose();

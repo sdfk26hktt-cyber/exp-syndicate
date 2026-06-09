@@ -1,8 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Library, ListChecks, Video, Calendar } from 'lucide-react';
+import { Home, Library, ListChecks, Video, Calendar, KeyRound } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useAgent } from '../context/AgentContext';
 
 const MobileNav = () => {
+  const { currentUser } = useAuth();
+  const { currentAgentData } = useAgent();
+
   return (
     <nav className="mobile-nav">
       <NavLink 
@@ -44,6 +49,17 @@ const MobileNav = () => {
         <Video size={24} />
         <span>Feed</span>
       </NavLink>
+      
+      
+      {(currentUser?.role === 'admin' || currentAgentData?.status === 'team_agent') && (
+        <NavLink 
+          to="/passwords" 
+          className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+        >
+          <KeyRound size={24} />
+          <span>Passwords</span>
+        </NavLink>
+      )}
     </nav>
   );
 };

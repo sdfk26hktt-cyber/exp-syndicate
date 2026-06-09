@@ -1,85 +1,69 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { useAuth } from './AuthContext';
+import { supabase } from '../lib/supabase';
 
 const CommunityContext = createContext();
 
 export const useCommunity = () => useContext(CommunityContext);
 
-const MOCK_INITIAL_POSTS = [
-  {
-    id: 'post-1',
-    authorName: 'Brian Burds',
-    authorRole: 'Admin',
-    content: 'Welcome to the new eXp Syndicate Training Feed! I will be posting exclusive video breakdowns and training content here weekly. Make sure to check the calendar for our live upcoming events!',
-    videoUrl: 'https://www.youtube.com/embed/R315wWjg3f0',
-    timestamp: new Date(Date.now() - 86400000).toISOString(),
-    likes: ['agent-test-1']
-  },
-  {
-    id: 'post-2',
-    authorName: 'Brian Burds',
-    authorRole: 'Admin',
-    content: 'Just uploaded the new guide on setting up SkySlope. This is critical for getting paid on time. Drop any questions you have in a direct message!',
-    videoUrl: '',
-    timestamp: new Date(Date.now() - 172800000).toISOString(),
-    likes: []
-  }
-];
-
-const MOCK_INITIAL_EVENTS = [
-  {
-    id: 'evt-1',
-    title: 'State Compliance Training',
-    date: '2026-06-01',
-    time: '10:00 AM',
-    description: 'Mandatory state compliance meeting in eXp World.',
-    status: 'approved'
-  },
-  {
-    id: 'evt-2',
-    title: 'Syndicate Launch Call',
-    date: '2026-06-05',
-    time: '2:00 PM',
-    description: 'Weekly team mastermind and lead flow review.',
-    status: 'approved'
-  }
-];
-
 export const CommunityProvider = ({ children }) => {
   const { currentUser } = useAuth();
   const [posts, setPosts] = useState([]);
   const [events, setEvents] = useState([]);
-  const [chats, setChats] = useState({}); // { agentId: { agentName: string, messages: [] } }
+  const [chats, setChats] = useState({});
+
+  const loadCommunityData = async () => {
+    const [postsRes, eventsRes] = await Promise.all([
+      supabase.from('posts').select('*').order('timestamp', { ascending: false }),
+      supabase.from('events').select('*')
+    ]);
+
+    if (postsRes.data) {
+      // Map postgres arrays correctly, though Supabase handles simple arrays well.
+      setPosts(postsRes.data.map(p => ({
+        id: p.id,
+        authorName: p.author,
+        authorRole: p.role,
+        content: p.text,
+        videoUrl: p.media,
+        audioUrl: p.audio,
+        presentationUrl: p.presentation,
+        attachedResources: p.attached_resources || [],
+        tags: p.tags || [],
+        timestamp: p.timestamp,
+        likes: p.likes || []
+      })));
+    }
+
+    if (eventsRes.data) {
+      setEvents(eventsRes.data.map(e => ({
+        id: e.id,
+        title: e.title,
+        date: e.date,
+        time: e.time,
+        endTime: e.end_time,
+        location: e.location,
+        description: e.description,
+        status: e.status,
+        type: e.type,
+        attendees: e.attendees || []
+      })).sort((a, b) => new Date(a.date) - new Date(b.date)));
+    }
+
+    const savedChats = JSON.parse(localStorage.getItem('mockCommunityChats'));
+    if (savedChats) setChats(savedChats);
+  };
 
   useEffect(() => {
-    const savedPosts = JSON.parse(localStorage.getItem('mockCommunityPosts'));
-    const savedEvents = JSON.parse(localStorage.getItem('mockCommunityEvents'));
-    const savedChats = JSON.parse(localStorage.getItem('mockCommunityChats'));
+    loadCommunityData();
+  }, [currentUser]);
 
-    if (savedPosts) {
-      setPosts(savedPosts);
-    } else {
-      setPosts(MOCK_INITIAL_POSTS);
-      localStorage.setItem('mockCommunityPosts', JSON.stringify(MOCK_INITIAL_POSTS));
-    }
-
-    if (savedEvents) {
-      setEvents(savedEvents);
-    } else {
-      setEvents(MOCK_INITIAL_EVENTS);
-      localStorage.setItem('mockCommunityEvents', JSON.stringify(MOCK_INITIAL_EVENTS));
-    }
-
-    if (savedChats) {
-      setChats(savedChats);
-    }
-  }, []);
-
-  const sendMessage = (agentId, agentName, text, isFromAdmin = false) => {
+  const sendMessage = (agentId, agentName, text, isFromAdmin = false, isSystemMessage = false) => {
     const newMessage = {
-      sender: isFromAdmin ? 'Admin' : agentName,
+      sender: isSystemMessage ? 'System' : (isFromAdmin ? 'Admin' : agentName),
       text,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      isSystemMessage
     };
 
     setChats(prevChats => {
@@ -97,17 +81,15 @@ export const CommunityProvider = ({ children }) => {
     });
   };
 
-  const addPost = (content, rawMediaInput = '', audioUrl = '', presentationUrl = '') => {
+  const addPost = async (content, rawMediaInput = '', audioUrl = '', presentationUrl = '', tags = [], attachedResources = []) => {
     if (!currentUser) return;
     
     let finalVideoUrl = rawMediaInput;
     let isRawHtml = false;
 
-    // Check if the input is raw HTML (iframe, script, etc)
     if (rawMediaInput.trim().startsWith('<')) {
       isRawHtml = true;
     } else {
-      // Parse normal youtube links into embed links if it's just a URL
       if (rawMediaInput.includes('youtube.com/watch?v=')) {
         const videoId = rawMediaInput.split('v=')[1]?.split('&')[0];
         finalVideoUrl = `https://www.youtube.com/embed/${videoId}`;
@@ -125,70 +107,126 @@ export const CommunityProvider = ({ children }) => {
 
     const newPost = {
       id: `post-${Date.now()}`,
-      authorName: currentUser.name,
-      authorRole: currentUser.role === 'admin' ? 'Admin' : 'Agent',
-      content,
-      videoUrl: finalVideoUrl,
-      audioUrl,
-      presentationUrl,
-      isRawHtml,
-      timestamp: new Date().toISOString(),
-      likes: []
+      author: currentUser.name,
+      author_id: currentUser.id,
+      role: currentUser.role === 'admin' ? 'Admin' : 'Agent',
+      text: content,
+      media: finalVideoUrl,
+      audio: audioUrl,
+      presentation: presentationUrl,
+      tags: tags,
+      attached_resources: attachedResources,
+      likes: [],
+      timestamp: new Date().toISOString()
     };
 
-    const updatedPosts = [newPost, ...posts];
-    setPosts(updatedPosts);
-    localStorage.setItem('mockCommunityPosts', JSON.stringify(updatedPosts));
+    await supabase.from('posts').insert([newPost]);
+    loadCommunityData();
   };
 
-  const toggleLike = (postId) => {
+  const toggleLike = async (postId) => {
     if (!currentUser) return;
     const userId = currentUser.id;
 
-    const updatedPosts = posts.map(post => {
-      if (post.id === postId) {
-        const hasLiked = post.likes.includes(userId);
-        return {
-          ...post,
-          likes: hasLiked ? post.likes.filter(id => id !== userId) : [...post.likes, userId]
-        };
-      }
-      return post;
-    });
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
 
-    setPosts(updatedPosts);
-    localStorage.setItem('mockCommunityPosts', JSON.stringify(updatedPosts));
+    const hasLiked = post.likes.includes(userId);
+    const updatedLikes = hasLiked ? post.likes.filter(id => id !== userId) : [...post.likes, userId];
+
+    await supabase.from('posts').update({ likes: updatedLikes }).eq('id', postId);
+    loadCommunityData();
   };
 
-  const addEvent = (title, date, time, description) => {
+  const updatePost = async (postId, updatedData) => {
+    let finalVideoUrl = updatedData.media || '';
+    let isRawHtml = false;
+
+    if (finalVideoUrl.trim().startsWith('<')) {
+      isRawHtml = true;
+    } else {
+      if (finalVideoUrl.includes('youtube.com/watch?v=')) {
+        const videoId = finalVideoUrl.split('v=')[1]?.split('&')[0];
+        finalVideoUrl = `https://www.youtube.com/embed/${videoId}`;
+      } else if (finalVideoUrl.includes('youtu.be/')) {
+        const videoId = finalVideoUrl.split('youtu.be/')[1]?.split('?')[0];
+        finalVideoUrl = `https://www.youtube.com/embed/${videoId}`;
+      } else if (finalVideoUrl.includes('vimeo.com/')) {
+        const videoId = finalVideoUrl.split('vimeo.com/')[1]?.split('?')[0];
+        finalVideoUrl = `https://player.vimeo.com/video/${videoId}`;
+      } else if (finalVideoUrl.includes('loom.com/share/')) {
+        const videoId = finalVideoUrl.split('loom.com/share/')[1]?.split('?')[0];
+        finalVideoUrl = `https://www.loom.com/embed/${videoId}`;
+      }
+    }
+
+    const payload = {
+      text: updatedData.text,
+      media: finalVideoUrl,
+      audio: updatedData.audio,
+      presentation: updatedData.presentation,
+      tags: updatedData.tags,
+      attached_resources: updatedData.attached_resources
+    };
+
+    await supabase.from('posts').update(payload).eq('id', postId);
+    loadCommunityData();
+  };
+
+  const deletePost = async (postId) => {
+    await supabase.from('posts').delete().eq('id', postId);
+    loadCommunityData();
+  };
+
+  const addEvent = async (title, date, time, endTime, location, description, category = 'general') => {
     const status = currentUser?.role === 'admin' ? 'approved' : 'pending';
     const newEvent = {
       id: `evt-${Date.now()}`,
       title,
       date,
       time,
+      end_time: endTime,
+      location,
       description,
-      status
+      status,
+      type: category,
+      attendees: []
     };
-    const updatedEvents = [...events, newEvent].sort((a, b) => new Date(a.date) - new Date(b.date));
-    setEvents(updatedEvents);
-    localStorage.setItem('mockCommunityEvents', JSON.stringify(updatedEvents));
+    await supabase.from('events').insert([newEvent]);
+    loadCommunityData();
   };
 
-  const approveEvent = (eventId) => {
-    const updatedEvents = events.map(evt => evt.id === eventId ? { ...evt, status: 'approved' } : evt);
-    setEvents(updatedEvents);
-    localStorage.setItem('mockCommunityEvents', JSON.stringify(updatedEvents));
+  const updateEvent = async (eventId, updatedData) => {
+    await supabase.from('events').update({
+      title: updatedData.title,
+      date: updatedData.date,
+      time: updatedData.time,
+      end_time: updatedData.endTime,
+      location: updatedData.location,
+      description: updatedData.description,
+      status: updatedData.status,
+      type: updatedData.category || 'general'
+    }).eq('id', eventId);
+    loadCommunityData();
   };
 
-  const rejectEvent = (eventId) => {
-    const updatedEvents = events.filter(evt => evt.id !== eventId);
-    setEvents(updatedEvents);
-    localStorage.setItem('mockCommunityEvents', JSON.stringify(updatedEvents));
+  const approveEvent = async (eventId) => {
+    await supabase.from('events').update({ status: 'approved' }).eq('id', eventId);
+    loadCommunityData();
+  };
+
+  const rejectEvent = async (eventId) => {
+    await supabase.from('events').delete().eq('id', eventId);
+    loadCommunityData();
+  };
+
+  const deleteEvent = async (eventId) => {
+    await supabase.from('events').delete().eq('id', eventId);
+    loadCommunityData();
   };
 
   return (
-    <CommunityContext.Provider value={{ posts, events, chats, addPost, toggleLike, addEvent, approveEvent, rejectEvent, sendMessage }}>
+    <CommunityContext.Provider value={{ posts, events, chats, addPost, updatePost, deletePost, toggleLike, addEvent, updateEvent, approveEvent, rejectEvent, deleteEvent, sendMessage }}>
       {children}
     </CommunityContext.Provider>
   );

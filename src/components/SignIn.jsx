@@ -1,31 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
 
 const SignIn = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [step, setStep] = useState(1); // 1 = request code, 2 = verify code
+  const [identifier, setIdentifier] = useState('');
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { login } = useAuth();
+  const { requestOtp, login, currentUser } = useAuth();
   const navigate = useNavigate();
 
-  const handleSignIn = async (e) => {
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
+    }
+  }, [currentUser, navigate]);
+
+  const handleRequestCode = async (e) => {
+    e.preventDefault();
+    if (!identifier.trim()) return;
+    
+    setError('');
+    setIsLoading(true);
+
+    try {
+      await requestOtp(identifier);
+      setStep(2);
+    } catch (err) {
+      console.error(err);
+      setError(`Error: ${err.message || 'Failed to send code. Please try again.'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      const user = await login(email, password);
-      if (user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/');
-      }
+      const user = await login(identifier, code);
+      // Wait for the onAuthStateChange listener to update currentUser state.
+      // The useEffect above will handle the navigation automatically once it's set.
     } catch (err) {
-      setError('Invalid login credentials. Use "admin" or any email to test.');
+      console.error(err);
+      setError(`Login failed: ${err.message || 'Invalid code. Please try again.'}`);
     } finally {
       setIsLoading(false);
     }
@@ -35,48 +62,60 @@ const SignIn = () => {
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.logoContainer}>
-          <div style={styles.logoIcon}><Users size={24} color="white" /></div>
-          <div style={styles.logoText}>
-            <span style={{color: '#00A1E0'}}>eXp</span> Syndicate
-          </div>
+          <img src="/long-syndicate.png" alt="EXP Syndicate" className="dynamic-logo" style={{ height: '48px', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
         </div>
         <h2 style={styles.title}>Welcome to The Syndicate</h2>
-        <p style={styles.subtitle}>Sign in to access your onboarding playbook.</p>
-
-        {error && <div style={styles.error}>{error}</div>}
-
-        <form onSubmit={handleSignIn} style={styles.form}>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Email Address</label>
-            <input 
-              type="text" 
-              style={styles.input} 
-              placeholder="e.g. agent@example.com or admin"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Password (mock)</label>
-            <input 
-              type="password" 
-              style={styles.input} 
-              placeholder="Any password works for mock"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn-primary" style={styles.button} disabled={isLoading}>
-            {isLoading ? 'Signing In...' : 'Sign In'}
-          </button>
-        </form>
-
-        <div style={styles.hint}>
-          <strong>Demo hints:</strong><br/>
-          Admin Login: <code>admin</code> or <code>brian@brianburds.com</code><br/>
-          Agent Login: <code>agent@test.com</code> (or any email)
-        </div>
+        {step === 1 ? (
+          <>
+            <p style={styles.subtitle}>Enter your email to sign in.</p>
+            {error && <div style={styles.error}>{error}</div>}
+            <form onSubmit={handleRequestCode} style={styles.form}>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Email Address</label>
+                <input 
+                  type="email" 
+                  style={styles.input} 
+                  placeholder="agent@exprealty.com"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                />
+              </div>
+              <button type="submit" className="btn-primary" style={styles.button} disabled={isLoading}>
+                {isLoading ? 'Sending Code...' : 'Send Login Code'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <p style={styles.subtitle}>We've sent a secure code to <strong>{identifier}</strong>.</p>
+            {error && <div style={styles.error}>{error}</div>}
+            <form onSubmit={handleVerifyCode} style={styles.form}>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Verification Code</label>
+                <input 
+                  type="text" 
+                  style={{...styles.input, textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.25rem'}} 
+                  placeholder="------"
+                  maxLength={10}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.trim())}
+                  required
+                />
+              </div>
+              <button type="submit" className="btn-primary" style={styles.button} disabled={isLoading || code.length < 6}>
+                {isLoading ? 'Verifying...' : 'Sign In'}
+              </button>
+              <button 
+                type="button" 
+                onClick={() => { setStep(1); setCode(''); setError(''); }}
+                style={{...styles.button, backgroundColor: 'transparent', color: 'var(--color-primary)', border: 'none', padding: '0.5rem', marginTop: '-0.5rem'}}
+              >
+                Use a different email
+              </button>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

@@ -10,6 +10,8 @@ import AdminDashboard from './components/AdminDashboard';
 import Settings from './components/Settings';
 import CommunityFeed from './components/CommunityFeed';
 import FullCalendar from './components/FullCalendar';
+import TeamPasswords from './components/TeamPasswords';
+import Directory from './components/Directory';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AgentProvider } from './context/AgentContext';
 import { CommunityProvider } from './context/CommunityContext';
@@ -97,6 +99,16 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
+              <Route 
+                path="/passwords" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <TeamPasswords />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
 
               {/* Agent Routes */}
               <Route 
@@ -163,6 +175,16 @@ function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <FullCalendar />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/directory" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Directory />
                     </AppLayout>
                   </ProtectedRoute>
                 } 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Phone, Mail, Star, Quote } from 'lucide-react';
+import { ArrowRight, Phone, Mail, Star, Quote, Calendar, Users, FolderOpen, ChevronRight } from 'lucide-react';
 import BadgeList from './Gamification/BadgeList';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAgent } from '../context/AgentContext';
 import { useAuth } from '../context/AuthContext';
+import { useCommunity } from '../context/CommunityContext';
 
 const quotes = [
   "Success is the sum of small efforts, repeated day in and day out.",
@@ -15,6 +16,8 @@ const quotes = [
 const Dashboard = () => {
   const { phases, xp, getRank, currentAgentData } = useAgent();
   const { currentUser } = useAuth();
+  const { events, posts } = useCommunity();
+  const navigate = useNavigate();
   const [greeting, setGreeting] = useState('Good day');
   const [quote] = useState(quotes[Math.floor(Math.random() * quotes.length)]);
 
@@ -26,19 +29,22 @@ const Dashboard = () => {
   }, []);
 
   // Calculate dynamic progress
-  const totalItems = phases.reduce((acc, phase) => acc + phase.items.length, 0);
-  const completedItems = phases.reduce((acc, phase) => acc + phase.items.filter(i => i.completed).length, 0);
+  const totalItems = phases?.reduce((acc, phase) => acc + (phase?.items?.length || 0), 0) || 0;
+  const completedItems = phases?.reduce((acc, phase) => acc + (phase?.items?.filter(i => i?.completed)?.length || 0), 0) || 0;
   const progressPercent = totalItems === 0 ? 0 : Math.round((completedItems / totalItems) * 100);
 
   // Find next step
   let nextStep = null;
-  let currentPhaseTitle = phases[0].title;
-  for (const phase of phases) {
-    const uncompleted = phase.items.find(i => !i.completed);
-    if (uncompleted) {
-      nextStep = uncompleted;
-      currentPhaseTitle = phase.title;
-      break;
+  let currentPhaseTitle = phases && phases[0] ? phases[0].title : 'Welcome';
+  if (phases && Array.isArray(phases)) {
+    for (const phase of phases) {
+      if (!phase?.items) continue;
+      const uncompleted = phase.items.find(i => !i?.completed);
+      if (uncompleted) {
+        nextStep = uncompleted;
+        currentPhaseTitle = phase.title;
+        break;
+      }
     }
   }
 
@@ -52,6 +58,16 @@ const Dashboard = () => {
   // Sponsor Info
   const sponsor = currentAgentData?.sponsor || { name: 'Brian Burds', phone: '(915) 256-6989', email: 'brian@brianburds.com' };
   const coSponsor = currentAgentData?.coSponsor;
+  const agentStatus = currentAgentData?.status || 'onboarding';
+
+  // Graduated Data
+  const upcomingEvents = (events || []).filter(e => {
+    if (!e.date || !e.date.includes('-')) return false;
+    const [y, m, d] = e.date.split('-');
+    const eDate = new Date(y, m - 1, d);
+    return eDate >= new Date(new Date().setHours(0,0,0,0));
+  }).slice(0, 3);
+  const recentPosts = (posts || []).slice(0, 2);
 
   return (
     <div className="animate-fade-in flex-col gap-6" style={{ paddingBottom: '80px' }}>
@@ -101,28 +117,74 @@ const Dashboard = () => {
       <div className="grid-layout">
         <div className="flex-col gap-6 animate-fade-in delay-200">
           
-          {/* Actionable "Up Next" Card */}
-          <div className="card" style={styles.upNextCard}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-lg text-white m-0">Up Next</h2>
-              <span style={styles.miniXp}>+{nextStep ? nextStep.xp : 0} XP</span>
+          {agentStatus === 'onboarding' ? (
+            <div className="card" style={styles.upNextCard}>
+              <div className="flex justify-between items-start mb-4">
+                <h2 className="text-lg text-white m-0">Up Next</h2>
+                <span style={styles.miniXp}>+{nextStep ? nextStep.xp : 0} XP</span>
+              </div>
+              
+              {nextStep ? (
+                <div className="flex-col gap-4">
+                  <div className="font-semibold text-xl text-white">{nextStep.text}</div>
+                  <div style={{color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem'}}>{nextStep.details}</div>
+                  <Link to="/checklist" className="btn-primary" style={styles.actionBtn}>
+                    Go to Playbook <ArrowRight size={16} />
+                  </Link>
+                </div>
+              ) : (
+                <div className="flex-col gap-4">
+                  <div className="font-semibold text-xl text-white">🎉 You're fully launched!</div>
+                  <div style={{color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem'}}>You have completed all onboarding playbook tasks.</div>
+                </div>
+              )}
             </div>
-            
-            {nextStep ? (
-              <div className="flex-col gap-4">
-                <div className="font-semibold text-xl text-white">{nextStep.text}</div>
-                <div style={{color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem'}}>{nextStep.details}</div>
-                <Link to="/checklist" className="btn-primary" style={styles.actionBtn}>
-                  Go to Playbook <ArrowRight size={16} />
-                </Link>
+          ) : (
+            <div className="flex-col gap-6">
+              <div className="card" style={{borderTop: '3px solid var(--color-primary)'}}>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg m-0 flex items-center gap-2"><Calendar size={20} color="var(--color-primary)" /> Upcoming Events</h2>
+                  <Link to="/calendar" className="text-sm font-medium" style={{color: 'var(--color-primary)'}}>Full Calendar</Link>
+                </div>
+                {upcomingEvents.length > 0 ? (
+                  <div className="flex-col gap-3">
+                    {upcomingEvents.map(evt => (
+                      <div key={evt.id} style={{padding: '1rem', backgroundColor: 'var(--color-background)', borderRadius: '8px', cursor: 'pointer'}} onClick={() => navigate('/calendar')}>
+                        <div className="font-bold text-dark-navy">{evt.title}</div>
+                        <div className="text-sm text-muted">
+                          {(() => {
+                            const [y, m, d] = evt.date.split('-');
+                            return new Date(y, m - 1, d).toLocaleDateString();
+                          })()} at {evt.time}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted text-sm">No upcoming events.</p>
+                )}
               </div>
-            ) : (
-              <div className="flex-col gap-4">
-                <div className="font-semibold text-xl text-white">🎉 You're fully launched!</div>
-                <div style={{color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem'}}>You have completed all onboarding playbook tasks.</div>
+
+              <div className="card" style={{borderTop: '3px solid var(--color-accent)'}}>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg m-0 flex items-center gap-2"><Users size={20} color="var(--color-accent)" /> Syndicate Updates</h2>
+                  <Link to="/community" className="text-sm font-medium" style={{color: 'var(--color-accent)'}}>Go to Feed</Link>
+                </div>
+                {recentPosts.length > 0 ? (
+                  <div className="flex-col gap-3">
+                    {recentPosts.map(post => (
+                      <div key={post.id} style={{padding: '1rem', backgroundColor: 'var(--color-background)', borderRadius: '8px', cursor: 'pointer'}} onClick={() => navigate('/community')}>
+                        <div className="font-bold text-dark-navy">{post.authorName}</div>
+                        <div className="text-sm text-muted line-clamp-2 mt-1">{post.content}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted text-sm">No recent posts.</p>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Activity / Motivation Feed */}
           <div className="card">
@@ -142,28 +204,28 @@ const Dashboard = () => {
             <h2 className="text-lg mb-1">Your Sponsor</h2>
             <p className="text-sm mb-4 font-semibold text-dark-navy">{sponsor.name}</p>
             <div className="flex-col gap-3">
-              <a href={`tel:${sponsor.phone.replace(/[^0-9]/g, '')}`} style={styles.contactItem}>
+              <a href={`tel:${sponsor?.phone?.replace(/[^0-9]/g, '') || ''}`} style={styles.contactItem}>
                 <div style={styles.iconBox}><Phone size={16} color="white" /></div>
-                <span className="font-medium text-sm">{sponsor.phone}</span>
+                <span className="font-medium text-sm">{sponsor?.phone || 'No phone'}</span>
               </a>
-              <a href={`mailto:${sponsor.email}`} style={styles.contactItem}>
+              <a href={`mailto:${sponsor?.email || ''}`} style={styles.contactItem}>
                 <div style={styles.iconBox}><Mail size={16} color="white" /></div>
-                <span className="font-medium text-sm" style={{wordBreak: 'break-all'}}>{sponsor.email}</span>
+                <span className="font-medium text-sm" style={{wordBreak: 'break-all'}}>{sponsor?.email || 'No email'}</span>
               </a>
             </div>
             
             {coSponsor && (
               <div className="mt-6 pt-4 border-t" style={{borderColor: 'var(--color-border)'}}>
                 <h2 className="text-md mb-1">Co-Sponsor</h2>
-                <p className="text-sm mb-3 font-semibold text-dark-navy">{coSponsor.name}</p>
+                <p className="text-sm mb-3 font-semibold text-dark-navy">{coSponsor?.name || 'Co-Sponsor'}</p>
                 <div className="flex-col gap-2">
-                  <a href={`tel:${coSponsor.phone.replace(/[^0-9]/g, '')}`} style={{...styles.contactItem, padding: '0.5rem'}}>
+                  <a href={`tel:${coSponsor?.phone?.replace(/[^0-9]/g, '') || ''}`} style={{...styles.contactItem, padding: '0.5rem'}}>
                     <Phone size={14} color="var(--color-primary)" />
-                    <span className="font-medium text-xs">{coSponsor.phone}</span>
+                    <span className="font-medium text-xs">{coSponsor?.phone || 'No phone'}</span>
                   </a>
-                  <a href={`mailto:${coSponsor.email}`} style={{...styles.contactItem, padding: '0.5rem'}}>
+                  <a href={`mailto:${coSponsor?.email || ''}`} style={{...styles.contactItem, padding: '0.5rem'}}>
                     <Mail size={14} color="var(--color-primary)" />
-                    <span className="font-medium text-xs" style={{wordBreak: 'break-all'}}>{coSponsor.email}</span>
+                    <span className="font-medium text-xs" style={{wordBreak: 'break-all'}}>{coSponsor?.email || 'No email'}</span>
                   </a>
                 </div>
               </div>
@@ -172,21 +234,35 @@ const Dashboard = () => {
             <div style={styles.supportHint}>
               "Call or text your sponsor anytime. Don't sit stuck."
             </div>
+            {agentStatus !== 'onboarding' && (
+              <Link to="/resources" className="card mt-6" style={{backgroundColor: 'var(--color-dark-navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem', textDecoration: 'none', borderRadius: '8px'}}>
+                <div className="flex items-center gap-3">
+                  <FolderOpen size={24} color="var(--color-accent)" />
+                  <div>
+                    <h3 className="m-0 text-white font-medium">Resource Board</h3>
+                    <p className="m-0 text-sm opacity-80 mt-1">Access all syndicate documents</p>
+                  </div>
+                </div>
+                <ChevronRight size={20} />
+              </Link>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Gamification Area */}
-      <div className="card animate-fade-in delay-300">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h2 className="text-lg mb-1">Phase Badges</h2>
-            <p className="text-sm text-muted">Complete Playbook phases to unlock your badges.</p>
+      {/* Gamification Area (Only for Onboarding) */}
+      {agentStatus === 'onboarding' && (
+        <div className="card animate-fade-in delay-300">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-lg mb-1">Phase Badges</h2>
+              <p className="text-sm text-muted">Complete Playbook phases to unlock your badges.</p>
+            </div>
+            <Link to="/achievements" className="text-sm" style={{ color: 'var(--color-primary)', fontWeight: '600' }}>View All</Link>
           </div>
-          <Link to="/achievements" className="text-sm" style={{ color: 'var(--color-primary)', fontWeight: '600' }}>View All</Link>
+          <BadgeList phases={phases} />
         </div>
-        <BadgeList phases={phases} />
-      </div>
+      )}
 
       <style>{`
         .grid-layout {

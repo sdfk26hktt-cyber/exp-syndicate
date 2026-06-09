@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MessageSquare, Calendar, Video, Plus, X, Send, FileText } from 'lucide-react';
+import { Heart, MessageSquare, Calendar, Video, Plus, X, Send, FileText, Search, Tag, Edit2, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const CommunityFeed = () => {
-  const { posts, events, addPost, toggleLike, addEvent, chats, sendMessage } = useCommunity();
+  const { posts, events, addPost, updatePost, deletePost, toggleLike, addEvent, chats, sendMessage } = useCommunity();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const isAdmin = currentUser?.role === 'admin';
@@ -20,9 +20,38 @@ const CommunityFeed = () => {
 
   const upcomingEvents = events.filter(evt => {
     if (evt.status !== 'approved') return false;
-    const evtDate = new Date(evt.date);
+    if (!evt.date || !evt.date.includes('-')) return false;
+    const [y, m, d] = evt.date.split('-');
+    const evtDate = new Date(y, m - 1, d);
     return evtDate >= today && evtDate <= fiveDaysFromNow;
   });
+
+  // Post Editing State
+  const [editingPostId, setEditingPostId] = useState(null);
+  const [editForm, setEditForm] = useState({ text: '', media: '', audio: '', presentation: '', tags: '' });
+
+  const startEdit = (post) => {
+    setEditingPostId(post.id);
+    setEditForm({
+      text: post.content || '',
+      media: post.videoUrl || '',
+      audio: post.audioUrl || '',
+      presentation: post.presentationUrl || '',
+      tags: post.tags ? post.tags.join(', ') : ''
+    });
+  };
+
+  const saveEdit = (postId) => {
+    updatePost(postId, {
+      text: editForm.text,
+      media: editForm.media,
+      audio: editForm.audio,
+      presentation: editForm.presentation,
+      tags: editForm.tags.split(',').map(t => t.trim()).filter(Boolean),
+      attached_resources: posts.find(p => p.id === postId)?.attachedResources || []
+    });
+    setEditingPostId(null);
+  };
 
   // Chat Modal State
   const [chatOpen, setChatOpen] = useState(false);
@@ -46,6 +75,24 @@ const CommunityFeed = () => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPosts = posts.filter(post => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    
+    // Check if content matches
+    if (post.content && post.content.toLowerCase().includes(query)) return true;
+    
+    // Check if author matches
+    if (post.authorName && post.authorName.toLowerCase().includes(query)) return true;
+    
+    // Check if any tag matches
+    if (post.tags && post.tags.some(tag => tag.toLowerCase().includes(query))) return true;
+
+    return false;
+  });
+
   return (
     <div className="animate-fade-in" style={styles.container}>
       <div style={styles.header}>
@@ -58,27 +105,102 @@ const CommunityFeed = () => {
       <div style={styles.layout} className="feed-layout">
         {/* Main Feed Column */}
         <div style={styles.feedColumn}>
-          {/* Admin tools moved to AdminDashboard */}
+          
+          {/* Search Bar */}
+          <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Search size={20} color="var(--color-text-muted)" />
+            <input
+              type="text"
+              placeholder="Search posts by keyword, author, or tags..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                flex: 1,
+                border: 'none',
+                outline: 'none',
+                fontSize: '1rem',
+                backgroundColor: 'transparent',
+                color: 'var(--color-text-main)'
+              }}
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }}>
+                <X size={16} color="var(--color-text-muted)" />
+              </button>
+            )}
+          </div>
+
           <div style={styles.postsList}>
-            {posts.map(post => {
+            {filteredPosts.map(post => {
               const hasLiked = post.likes.includes(currentUser?.id);
               return (
                 <div key={post.id} className="card" style={styles.postCard}>
                   {/* Post Header */}
-                  <div style={styles.postHeader}>
-                    <div style={styles.authorAvatar}>
-                      {post.authorName.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <div style={styles.authorName}>
-                        {post.authorName} <span style={styles.authorRoleBadge}>{post.authorRole}</span>
+                  <div style={styles.postHeader} className="relative">
+                    <div className="flex gap-3 items-center">
+                      <div style={styles.authorAvatar}>
+                        {post.authorName.charAt(0).toUpperCase()}
                       </div>
-                      <div style={styles.postDate}>{formatDate(post.timestamp)}</div>
+                      <div>
+                        <div style={styles.authorName}>
+                          {post.authorName} <span style={styles.authorRoleBadge}>{post.authorRole}</span>
+                        </div>
+                        <div style={styles.postDate}>{formatDate(post.timestamp)}</div>
+                      </div>
                     </div>
+                    {isAdmin && (
+                      <div className="flex gap-2 text-gray-400">
+                        <button onClick={() => startEdit(post)} className="hover:text-primary transition-colors">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => { if(window.confirm('Delete this post?')) deletePost(post.id); }} className="hover:text-red transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Post Content */}
-                  <div style={styles.postContent}>
+                  {editingPostId === post.id ? (
+                    <div style={styles.postContent} className="flex flex-col gap-3">
+                      <textarea 
+                        value={editForm.text} 
+                        onChange={e => setEditForm({...editForm, text: e.target.value})}
+                        className="w-full p-2 border rounded resize-y"
+                        rows={4}
+                        placeholder="Post Content"
+                      />
+                      <input 
+                        value={editForm.media} 
+                        onChange={e => setEditForm({...editForm, media: e.target.value})}
+                        className="w-full p-2 border rounded"
+                        placeholder="Video URL (YouTube, Vimeo, Loom)"
+                      />
+                      <input 
+                        value={editForm.audio} 
+                        onChange={e => setEditForm({...editForm, audio: e.target.value})}
+                        className="w-full p-2 border rounded"
+                        placeholder="Audio URL"
+                      />
+                      <input 
+                        value={editForm.presentation} 
+                        onChange={e => setEditForm({...editForm, presentation: e.target.value})}
+                        className="w-full p-2 border rounded"
+                        placeholder="Presentation PDF URL"
+                      />
+                      <input 
+                        value={editForm.tags} 
+                        onChange={e => setEditForm({...editForm, tags: e.target.value})}
+                        className="w-full p-2 border rounded"
+                        placeholder="Tags (comma separated)"
+                      />
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button onClick={() => setEditingPostId(null)} className="btn-secondary">Cancel</button>
+                        <button onClick={() => saveEdit(post.id)} className="btn-primary">Save Changes</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={styles.postContent}>
                     {post.content && (
                       <div className="markdown-body" style={{ marginBottom: (post.videoUrl || post.audioUrl || post.presentationUrl) ? '1rem' : 0 }}>
                         <ReactMarkdown>{post.content}</ReactMarkdown>
@@ -89,7 +211,9 @@ const CommunityFeed = () => {
                       post.isRawHtml ? (
                         <div 
                           style={styles.rawHtmlWrapper} 
-                          dangerouslySetInnerHTML={{ __html: post.videoUrl }} 
+                          dangerouslySetInnerHTML={{ 
+                            __html: post.videoUrl.replace(/<iframe/gi, '<iframe loading="lazy"') 
+                          }} 
                         />
                       ) : (
                         <div style={styles.videoWrapper}>
@@ -97,6 +221,7 @@ const CommunityFeed = () => {
                             src={post.videoUrl} 
                             title="Video player" 
                             frameBorder="0" 
+                            loading="lazy"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                             allowFullScreen
                             style={styles.iframe}
@@ -127,28 +252,68 @@ const CommunityFeed = () => {
                         </a>
                       </div>
                     )}
-                  </div>
 
-                  {/* Post Actions */}
-                  <div style={styles.postActions}>
-                    <button 
-                      onClick={() => toggleLike(post.id)} 
-                      style={{...styles.actionBtn, color: hasLiked ? 'var(--color-primary)' : 'var(--color-moss-grey)'}}
-                    >
-                      <Heart size={18} fill={hasLiked ? 'var(--color-primary)' : 'none'} />
-                      {post.likes.length > 0 ? post.likes.length : 'Like'}
-                    </button>
-                    
-                    {!isAdmin && (
-                      <button 
-                        onClick={() => setChatOpen(true)} 
-                        style={styles.actionBtn}
-                      >
-                        <MessageSquare size={18} />
-                        Message Admin
-                      </button>
+                    {/* Tags */}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+                      {post.tags && post.tags.map(tag => (
+                        <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full flex items-center gap-1">
+                          <Tag size={12} /> {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    {post.attached_resources && post.attached_resources.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <h4 className="text-sm font-semibold text-dark-navy mb-2 flex items-center gap-1">
+                          <FileText size={16} /> Attached Resources
+                        </h4>
+                        <div className="flex flex-col gap-2">
+                          {post.attached_resources.map(res => (
+                            <a 
+                              key={res.id} 
+                              href={res.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 border border-gray-100 transition-colors"
+                              style={{ textDecoration: 'none', color: 'inherit' }}
+                            >
+                              <div className="bg-primary bg-opacity-10 p-2 rounded text-primary">
+                                {res.type === 'video' ? <Video size={16} /> : <FileText size={16} />}
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold">{res.title}</div>
+                                <div className="text-xs text-muted">{res.category}</div>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
+                  )}
+
+                  {/* Post Actions */}
+                  {!editingPostId && (
+                    <div style={styles.postActions}>
+                      <button 
+                        onClick={() => toggleLike(post.id)} 
+                        style={{...styles.actionBtn, color: hasLiked ? 'var(--color-primary)' : 'var(--color-moss-grey)'}}
+                      >
+                        <Heart size={18} fill={hasLiked ? 'var(--color-primary)' : 'none'} />
+                        {post.likes.length > 0 ? post.likes.length : 'Like'}
+                      </button>
+                      
+                      {!isAdmin && (
+                        <button 
+                          onClick={() => setChatOpen(true)} 
+                          style={styles.actionBtn}
+                        >
+                          <MessageSquare size={18} />
+                          Message Admin
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -175,12 +340,23 @@ const CommunityFeed = () => {
                     onClick={() => navigate('/calendar')}
                   >
                     <div style={styles.eventDateBlock}>
-                      <span style={styles.eventMonth}>{new Date(evt.date).toLocaleDateString('en-US', {month: 'short'}).toUpperCase()}</span>
-                      <span style={styles.eventDay}>{new Date(evt.date).toLocaleDateString('en-US', {day: 'numeric'})}</span>
+                      <span style={styles.eventMonth}>
+                        {(() => {
+                          const [y, m, d] = evt.date.split('-');
+                          return new Date(y, m - 1, d).toLocaleDateString('en-US', {month: 'short'}).toUpperCase();
+                        })()}
+                      </span>
+                      <span style={styles.eventDay}>
+                        {(() => {
+                          const [y, m, d] = evt.date.split('-');
+                          return new Date(y, m - 1, d).toLocaleDateString('en-US', {day: 'numeric'});
+                        })()}
+                      </span>
                     </div>
                     <div style={styles.eventDetails}>
                       <h4 style={styles.eventTitle}>{evt.title}</h4>
-                      <div style={styles.eventTime}>{evt.time}</div>
+                      <div style={styles.eventTime}>{evt.time} {evt.endTime && `- ${evt.endTime}`}</div>
+                      {evt.location && <div style={{...styles.eventTime, color: 'var(--color-slate-blue)'}}>{evt.location}</div>}
                       {evt.description && <p style={styles.eventDesc}>{evt.description}</p>}
                     </div>
                   </div>
@@ -212,17 +388,38 @@ const CommunityFeed = () => {
             </div>
             
             <div style={styles.chatBody}>
-              {activeChatMessages.map((msg, idx) => (
-                <div key={idx} style={{
-                  ...styles.chatMessage, 
-                  alignSelf: msg.sender === currentUser.name ? 'flex-end' : 'flex-start',
-                  backgroundColor: msg.sender === currentUser.name ? 'var(--color-primary)' : 'var(--color-frosted-blue)',
-                  color: msg.sender === currentUser.name ? 'white' : 'var(--color-dark-navy)'
-                }}>
-                  <div style={{fontSize: '0.7rem', opacity: 0.7, marginBottom: '0.25rem'}}>{msg.sender}</div>
-                  <div>{msg.text}</div>
-                </div>
-              ))}
+              {activeChatMessages.map((msg, idx) => {
+                if (msg.isSystemMessage) {
+                  return (
+                    <div key={idx} style={{
+                      alignSelf: 'center',
+                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      color: 'var(--color-text-muted)',
+                      padding: '0.4rem 0.8rem',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: '500',
+                      maxWidth: '90%',
+                      textAlign: 'center',
+                      marginBottom: '0.5rem'
+                    }}>
+                      {msg.text}
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div key={idx} style={{
+                    ...styles.chatMessage, 
+                    alignSelf: msg.sender === currentUser.name ? 'flex-end' : 'flex-start',
+                    backgroundColor: msg.sender === currentUser.name ? 'var(--color-primary)' : 'var(--color-frosted-blue)',
+                    color: msg.sender === currentUser.name ? 'white' : 'var(--color-dark-navy)'
+                  }}>
+                    <div style={{fontSize: '0.7rem', opacity: 0.7, marginBottom: '0.25rem'}}>{msg.sender}</div>
+                    <div>{msg.text}</div>
+                  </div>
+                );
+              })}
             </div>
             
             <form onSubmit={handleSendChat} style={styles.chatFooter}>

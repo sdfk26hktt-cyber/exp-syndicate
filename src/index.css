@@ -291,3 +291,13 @@ button {
     display: flex;
   }
 }
+
+/* Dynamic Logo Styling */
+.dynamic-logo {
+  transition: transform var(--transition-fast), filter var(--transition-fast);
+  will-change: transform;
+}
+.dynamic-logo:hover {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.2));
+}

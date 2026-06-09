@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardList, ShieldCheck, Zap, Rocket } from 'lucide-react';
+import { ClipboardList, ShieldCheck, Zap, Rocket, Star } from 'lucide-react';
 
 const BadgeList = ({ phases }) => {
   // If phases aren't passed (e.g. from a static view), provide defaults
@@ -7,7 +7,8 @@ const BadgeList = ({ phases }) => {
     { id: 'apply', items: [{completed: true}] },
     { id: 'process', items: [{completed: false}] },
     { id: 'activate', items: [{completed: false}] },
-    { id: 'launch', items: [{completed: false}] }
+    { id: 'launch', items: [{completed: false}] },
+    { id: 'zillow', items: [{completed: false}] }
   ];
 
   const actualPhases = phases || fallbackPhases;
@@ -23,6 +24,7 @@ const BadgeList = ({ phases }) => {
     { id: 'process', title: 'Phase 2: Processing', description: 'License verified and ICA countersigned.', icon: ShieldCheck, unlocked: isPhaseUnlocked('process') },
     { id: 'activate', title: 'Phase 3: Activated', description: 'TREC transferred and systems live.', icon: Zap, unlocked: isPhaseUnlocked('activate') },
     { id: 'launch', title: 'Phase 4: Launched', description: 'Board joined and ready for business.', icon: Rocket, unlocked: isPhaseUnlocked('launch') },
+    { id: 'zillow', title: 'Phase 5: Enrolled', description: 'Zillow Premier and FUB setup complete.', icon: Star, unlocked: isPhaseUnlocked('zillow') },
   ];
 
   return (

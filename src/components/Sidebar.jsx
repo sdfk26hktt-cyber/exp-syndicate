@@ -1,25 +1,24 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Library, Settings, LogOut, Users, ListChecks, Shield, Video, Calendar } from 'lucide-react';
+import { Home, Library, Settings, LogOut, Users, ListChecks, Shield, Video, Calendar, KeyRound, Contact } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAgent } from '../context/AgentContext';
 
 const Sidebar = () => {
   const { currentUser, logout } = useAuth();
+  const { currentAgentData } = useAgent();
   const navigate = useNavigate();
 
-  const handleLogout = (e) => {
+  const handleLogout = async (e) => {
     e.preventDefault();
-    logout();
+    await logout();
     navigate('/login');
   };
 
   return (
     <aside style={styles.sidebar}>
       <div style={styles.logoContainer}>
-        <div style={styles.logoIcon}><Users size={24} color="var(--color-white)" /></div>
-        <div style={styles.logoText}>
-          <span style={styles.logoBrand}>eXp</span> Syndicate
-        </div>
+        <img src="/long-syndicate.png" alt="EXP Syndicate" className="dynamic-logo" style={{ height: '36px', width: 'auto', maxWidth: '220px', objectFit: 'contain' }} />
       </div>
 
       <nav style={styles.nav}>
@@ -81,7 +80,29 @@ const Sidebar = () => {
                   <span>Calendar</span>
                 </NavLink>
               </li>
+              <li>
+                <NavLink 
+                  to="/directory" 
+                  style={({ isActive }) => isActive ? { ...styles.navLink, ...styles.navLinkActive } : styles.navLink}
+                >
+                  <Contact size={20} />
+                  <span>Directory</span>
+                </NavLink>
+              </li>
             </>
+          )}
+
+          {/* Accessible to admin and team_agent only */}
+          {(currentUser?.role === 'admin' || currentAgentData?.status === 'team_agent') && (
+            <li>
+              <NavLink 
+                to="/passwords" 
+                style={({ isActive }) => isActive ? { ...styles.navLink, ...styles.navLinkActive } : styles.navLink}
+              >
+                <KeyRound size={20} />
+                <span>Team Passwords</span>
+              </NavLink>
+            </li>
           )}
         </ul>
       </nav>

@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { useAuth } from './AuthContext';
+import { supabase } from '../lib/supabase';
 
 const AgentContext = createContext();
 
@@ -98,52 +99,27 @@ const DEFAULT_PHASES = [
         details: 'Crucial: set up forwarding to your everyday inbox so you never miss a message.',
         currentStepIndex: 0,
         steps: [
-          { title: "Log into Passport", instruction: "Log into your new eXp Passport account to access your tools." },
-          { title: "Open Gmail", instruction: "Open your new @exprealty.com Gmail inbox." },
-          { title: "Go to Settings", instruction: "Click the gear icon in the top right, select 'See all settings', and navigate to the 'Forwarding and POP/IMAP' tab." },
-          { title: "Add Forwarding", instruction: "Click 'Add a forwarding address' and input your personal/everyday email address. Verify the link sent to your personal email so you never miss a brokerage update!" }
+          { title: "Login to Enterprise", instruction: "Go to expenterprise.com and log in with your new eXp credentials." },
+          { title: "Access Email", instruction: "Click on the 'eXp Email' tab to activate your @exprealty.com email address." },
+          { title: "Set Forwarding", instruction: "In your eXp email settings, configure mail forwarding to send all emails to your primary personal inbox so you never miss a message." }
         ]
       },
-      { 
-        id: '3-4', 
-        text: 'Activate Passport, SkySlope, and eXp World', 
-        completed: false, 
-        xp: 50, 
-        details: 'Passport is your SSO. SkySlope is for transactions. Jump into the browser-driven eXp World.',
-        currentStepIndex: 0,
-        steps: [
-          { title: "Set Up Okta/Passport", instruction: "Your eXp Passport is your single-sign-on (SSO) for everything. Read the setup guide here.", link: "https://exptoolkit.com/us-realty-onboarding/#page-5" },
-          { title: "Set Up SkySlope", instruction: "SkySlope is where all your transaction compliance happens. Watch this quick YouTube tutorial to get your account properly configured.", link: "https://youtu.be/R315wWjg3f0" },
-          { title: "Enter eXp World", instruction: "eXp World is now fully browser-driven! You no longer need to download a heavy application. Jump straight in at exp.world to explore the campus.", link: "https://exp.world" }
-        ]
-      },
-      { 
-        id: '3-5', 
-        text: 'Select and set up CRM of Choice', 
-        completed: false, 
-        xp: 50, 
-        details: 'Pick BoldTrail (kvCORE), Lofty, or Cloze. Call Brian before committing so your setup matches the team.',
-        currentStepIndex: 0,
-        steps: [
-          { title: "Research Options", instruction: "eXp provides several powerful CRMs including BoldTrail (formerly kvCORE), Lofty, and Cloze. Review the features of each.", link: "https://exptoolkit.com/crmofchoice" },
-          { title: "Consult with Brian", instruction: "Before making a final choice, call or text Brian. It is highly recommended to pick the CRM that best aligns with the team's current lead flow and systems." },
-          { title: "Activate CRM", instruction: "Once you have consulted with the team, go back to the CRM portal and officially activate your selection." }
-        ]
-      },
+      { id: '3-4', text: 'Log into eXp Enterprise', completed: false, xp: 10, details: 'This is your central hub for all eXp apps and services.' },
+      { id: '3-5', text: 'Set up Skyslope', completed: false, xp: 25, details: 'This is where you will submit your transactions for compliance and payment.' },
     ]
   },
   {
     id: 'launch',
     title: 'Phase 4: Launch',
-    description: 'Join your Board/MLS, attend orientation, and launch your business.',
+    description: 'Join your local board, set up marketing, and schedule your launch call.',
     items: [
       { 
         id: '4-1', 
-        text: 'Join / transfer local Board & MLS', 
+        text: 'Join Local Association (GEPAR / Las Cruces)', 
         completed: false, 
-        xp: 100, 
+        xp: 50, 
         critical: true, 
-        details: 'HARD DEADLINE: You have 2 weeks to join El Paso or Las Cruces association or your license will be released.',
+        details: 'Mandatory: you have 2 weeks to join the board or your license gets returned to TREC.',
         currentStepIndex: 0,
         steps: [
           { title: "Choose Association", instruction: "Decide whether you are joining the Greater El Paso Association of Realtors (GEPAR) or the Las Cruces association." },
@@ -185,21 +161,38 @@ const DEFAULT_PHASES = [
         ]
       },
     ]
+  },
+  {
+    id: 'zillow',
+    title: 'Phase 5: Zillow Enrollment',
+    description: 'Get onboarded to Follow Up Boss and added to Zillow Premier.',
+    items: [
+      { 
+        id: '5-1', 
+        text: 'Reach out to David Bitoon to get added to Zillow Premier', 
+        completed: false, 
+        xp: 50, 
+        details: 'Contact David Bitoon by text at (915) 800-7543 for your Zillow Premier agent account setup.',
+        currentStepIndex: 0,
+        steps: [
+          { title: "Text David Bitoon", instruction: "Send a text message to David at (915) 800-7543 letting him know you are ready to be added to Zillow Premier." }
+        ]
+      },
+      { id: '5-2', text: 'Schedule appointment with Brenda Faudoa', completed: false, xp: 50, details: 'Meet with Brenda to get onboarded to Follow Up Boss and View El Paso Homes.' },
+      { id: '5-3', text: 'Watch Training on Follow Up Boss compliance', completed: false, xp: 50, details: 'Watch the required training to maintain compliance with your Zillow leads inside Follow Up Boss.' },
+    ]
   }
 ];
 
 export const AgentProvider = ({ children }) => {
   const { currentUser } = useAuth();
   
-  // Admin-level state (all agents)
   const [agents, setAgents] = useState([]);
-  
-  // Current user state
   const [currentAgentData, setCurrentAgentData] = useState(null);
+  const [globalPlaybooks, setGlobalPlaybooks] = useState(DEFAULT_PHASES);
   const [phases, setPhases] = useState(DEFAULT_PHASES);
   const [xp, setXp] = useState(0);
   
-  // Admin Settings state
   const [adminSettings, setAdminSettings] = useState({
     defaultSponsor: { name: 'Brian Burds', phone: '(915) 256-6989', email: 'brian@brianburds.com' }
   });
@@ -213,73 +206,98 @@ export const AgentProvider = ({ children }) => {
     goals: ''
   };
 
-  useEffect(() => {
-    // Load mock database
-    const db = JSON.parse(localStorage.getItem('mockAgentDb')) || [];
-    setAgents(db);
-    
-    // Load Admin Settings
-    const settings = JSON.parse(localStorage.getItem('mockAdminSettings'));
-    if (settings) {
-      setAdminSettings(settings);
+  const loadAgents = async () => {
+    const { data, error } = await supabase.from('agents').select('*');
+    if (!error && data) {
+      setAgents(data);
+      return data;
     }
-    
-    if (currentUser?.role === 'agent') {
-      const myData = db.find(a => a.id === currentUser.id);
-      if (myData) {
-        setPhases(myData.phases);
-        setXp(myData.xp);
-        
-        // Ensure legacy agents get the profile object
-        if (!myData.profile) myData.profile = defaultProfile;
+    return [];
+  };
 
-        // Merge steps from DEFAULT_PHASES into legacy saved phases
-        const mergedPhases = myData.phases.map(savedPhase => {
-          const defaultPhase = DEFAULT_PHASES.find(p => p.id === savedPhase.id);
-          if (!defaultPhase) return savedPhase;
-
-          return {
-            ...savedPhase,
-            items: savedPhase.items.map(savedItem => {
-              const defaultItem = defaultPhase.items.find(i => i.id === savedItem.id);
-              if (defaultItem && defaultItem.steps) {
-                return { 
-                  ...savedItem, 
-                  steps: defaultItem.steps, 
-                  currentStepIndex: savedItem.currentStepIndex || 0 
-                };
-              }
-              return savedItem;
-            })
-          };
-        });
-
-        setPhases(mergedPhases);
-        setXp(myData.xp);
-        setCurrentAgentData(myData);
-      } else {
-        // Init new agent with default sponsor if they login and aren't in DB yet
-        const sponsorToUse = settings ? settings.defaultSponsor : adminSettings.defaultSponsor;
-        const newAgent = { 
-          id: currentUser.id, 
-          name: currentUser.name, 
-          xp: 0, 
-          phases: DEFAULT_PHASES, 
-          sponsor: sponsorToUse,
-          profile: defaultProfile
-        };
-        setPhases(DEFAULT_PHASES);
-        setXp(0);
-        setCurrentAgentData(newAgent);
-        const newDb = [...db, newAgent];
-        setAgents(newDb);
-        localStorage.setItem('mockAgentDb', JSON.stringify(newDb));
+  const loadGlobalPlaybooks = async () => {
+    try {
+      const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'global_playbook').single();
+      if (!error && data?.data) {
+        setGlobalPlaybooks(data.data);
+        return data.data;
+      } else if (error && error.code === 'PGRST116') {
+        // Not found, seed it
+        await supabase.from('global_settings').insert([{ id: 'global_playbook', data: DEFAULT_PHASES }]);
+        setGlobalPlaybooks(DEFAULT_PHASES);
+        return DEFAULT_PHASES;
       }
+      return DEFAULT_PHASES;
+    } catch (e) {
+      console.error(e);
+      return DEFAULT_PHASES;
     }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      const currentPlaybook = await loadGlobalPlaybooks();
+      const db = await loadAgents();
+      
+      const settings = JSON.parse(localStorage.getItem('mockAdminSettings'));
+      if (settings) setAdminSettings(settings);
+      
+      if (currentUser?.role === 'agent') {
+        const myData = db.find(a => a.id === currentUser.id || a.id === currentUser.email);
+        
+        if (myData) {
+          // Merge steps from currentPlaybook into saved phases from Supabase
+          const savedPhases = myData.phases || currentPlaybook;
+          const mergedPhases = savedPhases.map(savedPhase => {
+            const defaultPhase = currentPlaybook.find(p => p.id === savedPhase.id);
+            if (!defaultPhase) return savedPhase;
+
+            return {
+              ...savedPhase,
+              items: savedPhase.items.map(savedItem => {
+                const defaultItem = defaultPhase.items.find(i => i.id === savedItem.id);
+                if (defaultItem && defaultItem.steps) {
+                  return { 
+                    ...savedItem, 
+                    steps: defaultItem.steps, 
+                    currentStepIndex: savedItem.currentStepIndex || 0 
+                  };
+                }
+                return savedItem;
+              })
+            };
+          });
+
+          setPhases(mergedPhases);
+          setXp(myData.xp || 0);
+          setCurrentAgentData(myData);
+        } else {
+          // Init new agent
+          const sponsorToUse = settings ? settings.defaultSponsor : adminSettings.defaultSponsor;
+          const newAgent = { 
+            id: currentUser.email || currentUser.id, 
+            name: currentUser.name, 
+            xp: 0, 
+            phases: currentPlaybook, 
+            sponsor: sponsorToUse,
+            profile: defaultProfile,
+            status: 'onboarding',
+            current_phase: 'apply'
+          };
+          
+          await supabase.from('agents').insert([newAgent]);
+          setPhases(currentPlaybook);
+          setXp(0);
+          setCurrentAgentData(newAgent);
+          setAgents([...db, newAgent]);
+        }
+      }
+    };
+    init();
   }, [currentUser]);
 
-  const toggleItem = (phaseId, itemId) => {
-    if (currentUser?.role !== 'agent') return;
+  const toggleItem = async (phaseId, itemId) => {
+    if (currentUser?.role !== 'agent' || !currentAgentData) return;
 
     let xpChange = 0;
     const newPhases = phases.map(phase => {
@@ -289,7 +307,12 @@ export const AgentProvider = ({ children }) => {
           items: phase.items.map(item => {
             if (item.id === itemId) {
               xpChange = item.completed ? -item.xp : item.xp;
-              return { ...item, completed: !item.completed };
+              const isNowCompleted = !item.completed;
+              return { 
+                ...item, 
+                completed: isNowCompleted,
+                completedAt: isNowCompleted ? new Date().toISOString() : null
+              };
             }
             return item;
           })
@@ -302,14 +325,12 @@ export const AgentProvider = ({ children }) => {
     setPhases(newPhases);
     setXp(newXp);
 
-    // Persist to DB
-    const newDb = agents.map(a => a.id === currentUser.id ? { ...a, phases: newPhases, xp: newXp } : a);
-    setAgents(newDb);
-    localStorage.setItem('mockAgentDb', JSON.stringify(newDb));
+    await supabase.from('agents').update({ phases: newPhases, xp: newXp }).eq('id', currentAgentData.id);
+    loadAgents();
   };
 
-  const updateTaskStep = (phaseId, itemId, stepIndex) => {
-    if (currentUser?.role !== 'agent') return;
+  const updateTaskStep = async (phaseId, itemId, stepIndex) => {
+    if (currentUser?.role !== 'agent' || !currentAgentData) return;
 
     const newPhases = phases.map(phase => {
       if (phase.id === phaseId) {
@@ -327,11 +348,8 @@ export const AgentProvider = ({ children }) => {
     });
 
     setPhases(newPhases);
-
-    // Persist to DB
-    const newDb = agents.map(a => a.id === currentUser.id ? { ...a, phases: newPhases } : a);
-    setAgents(newDb);
-    localStorage.setItem('mockAgentDb', JSON.stringify(newDb));
+    await supabase.from('agents').update({ phases: newPhases }).eq('id', currentAgentData.id);
+    loadAgents();
   };
 
   const getRank = (currentXp) => {
@@ -341,19 +359,34 @@ export const AgentProvider = ({ children }) => {
     return 'Capstone';
   };
 
-  const addAgent = (email, name, sponsorData, coSponsorData) => {
+  const addAgent = async (email, name, sponsorData, coSponsorData) => {
     const newAgent = { 
       id: email, 
       name: name, 
       xp: 0, 
-      phases: DEFAULT_PHASES,
+      phases: globalPlaybooks,
       sponsor: sponsorData || adminSettings.defaultSponsor,
-      coSponsor: coSponsorData || null,
-      profile: defaultProfile
+      co_sponsor: coSponsorData || null,
+      profile: defaultProfile,
+      status: 'onboarding',
+      current_phase: 'col-1'
     };
-    const newDb = [...agents, newAgent];
-    setAgents(newDb);
-    localStorage.setItem('mockAgentDb', JSON.stringify(newDb));
+    
+    await supabase.from('agents').insert([newAgent]);
+    loadAgents();
+
+    // Trigger the invitation email
+    try {
+      await fetch('/api/invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, name })
+      });
+    } catch (err) {
+      console.error('Failed to trigger invite email:', err);
+    }
   };
 
   const updateAdminSettings = (newSettings) => {
@@ -362,28 +395,75 @@ export const AgentProvider = ({ children }) => {
     localStorage.setItem('mockAdminSettings', JSON.stringify(updated));
   };
 
-  const updateAgentProfile = (profileData, newName) => {
-    if (!currentUser || currentUser.role !== 'agent') return;
+  const updateAgentProfile = async (profileData, newName) => {
+    if (!currentUser || currentUser.role !== 'agent' || !currentAgentData) return;
     
-    const newDb = agents.map(a => {
-      if (a.id === currentUser.id) {
-        const updatedAgent = { 
-          ...a, 
-          name: newName || a.name,
-          profile: { ...a.profile, ...profileData } 
-        };
-        setCurrentAgentData(updatedAgent);
-        return updatedAgent;
-      }
-      return a;
-    });
+    const updatedProfile = { ...currentAgentData.profile, ...profileData };
+    const updatedName = newName || currentAgentData.name;
     
-    setAgents(newDb);
-    localStorage.setItem('mockAgentDb', JSON.stringify(newDb));
+    const { data } = await supabase.from('agents')
+      .update({ name: updatedName, profile: updatedProfile })
+      .eq('id', currentAgentData.id)
+      .select()
+      .single();
+      
+    if (data) {
+      setCurrentAgentData(data);
+    }
+    loadAgents();
+  };
+
+  const adminUpdateAgent = async (agentId, newName, profileData) => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    
+    // fetch current profile to merge
+    const targetAgent = agents.find(a => a.id === agentId);
+    if (!targetAgent) return;
+    
+    const updatedProfile = { ...(targetAgent.profile || {}), ...profileData };
+    const updatedName = newName || targetAgent.name;
+    
+    await supabase.from('agents')
+      .update({ name: updatedName, profile: updatedProfile })
+      .eq('id', agentId);
+      
+    if (currentAgentData?.id === agentId) {
+      setCurrentAgentData({ ...currentAgentData, name: updatedName, profile: updatedProfile });
+    }
+    loadAgents();
+  };
+
+  const updateAgentStatus = async (agentId, newStatus) => {
+    await supabase.from('agents').update({ status: newStatus }).eq('id', agentId);
+    if (currentAgentData?.id === agentId) {
+      setCurrentAgentData({ ...currentAgentData, status: newStatus });
+    }
+    loadAgents();
+  };
+
+  const updateAgentPhase = async (agentId, newPhaseId) => {
+    await supabase.from('agents').update({ current_phase: newPhaseId }).eq('id', agentId);
+    if (currentAgentData?.id === agentId) {
+      setCurrentAgentData({ ...currentAgentData, current_phase: newPhaseId });
+    }
+    loadAgents();
+  };
+
+  const deleteAgent = async (agentId) => {
+    await supabase.from('agents').delete().eq('id', agentId);
+    if (currentAgentData?.id === agentId) {
+      setCurrentAgentData(null);
+    }
+    loadAgents();
+  };
+
+  const updateGlobalPlaybooks = async (newPlaybook) => {
+    setGlobalPlaybooks(newPlaybook);
+    await supabase.from('global_settings').upsert([{ id: 'global_playbook', data: newPlaybook }]);
   };
 
   return (
-    <AgentContext.Provider value={{ agents, phases, xp, currentAgentData, adminSettings, toggleItem, updateTaskStep, getRank, addAgent, updateAdminSettings, updateAgentProfile }}>
+    <AgentContext.Provider value={{ agents, phases, globalPlaybooks, xp, currentAgentData, adminSettings, toggleItem, updateTaskStep, getRank, addAgent, updateAdminSettings, updateAgentProfile, adminUpdateAgent, updateAgentStatus, updateAgentPhase, deleteAgent, updateGlobalPlaybooks }}>
       {children}
     </AgentContext.Provider>
   );
