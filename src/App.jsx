@@ -15,6 +15,7 @@ import Directory from './components/Directory';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AgentProvider } from './context/AgentContext';
 import { CommunityProvider } from './context/CommunityContext';
+import ExpLinksModal from './components/ExpLinksModal';
 
 const ProtectedRoute = ({ children, role }) => {
   const { currentUser } = useAuth();
@@ -35,6 +36,8 @@ const ProtectedRoute = ({ children, role }) => {
 
 const AppLayout = ({ children }) => {
   const { currentUser, originalAdminUser, stopEmulating } = useAuth();
+  const [isExpModalOpen, setIsExpModalOpen] = React.useState(false);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {originalAdminUser && (
@@ -75,6 +78,25 @@ const AppLayout = ({ children }) => {
         </main>
         {currentUser?.role === 'agent' && <MobileNav />}
       </div>
+
+      {/* Floating eXp Button */}
+      <button 
+        className="exp-float-btn" 
+        onClick={() => setIsExpModalOpen(true)}
+        aria-label="eXp Quick Links"
+      >
+        <img 
+          src="/exp-syndicate-logo.png" 
+          alt="eXp" 
+          style={{ width: '80%', height: '80%', objectFit: 'contain' }} 
+        />
+      </button>
+
+      {/* eXp Links Modal */}
+      <ExpLinksModal 
+        isOpen={isExpModalOpen} 
+        onClose={() => setIsExpModalOpen(false)} 
+      />
     </div>
   );
 };
