@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
-import { Calendar as CalendarIcon, Download, Plus, X, MapPin, CheckSquare, Square, ChevronDown } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Plus, X, MapPin, CheckSquare, Square, ChevronDown, CalendarPlus, Copy } from 'lucide-react';
 import LocationAutocomplete from './LocationAutocomplete';
 
 const CATEGORIES = {
@@ -34,6 +34,7 @@ const FullCalendar = () => {
   // Bulk Download State
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [selectedEventIds, setSelectedEventIds] = useState([]);
+  const [isSubscribeModalOpen, setIsSubscribeModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState('month');
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   
@@ -273,10 +274,20 @@ const FullCalendar = () => {
             {isBulkMode ? "Cancel Bulk Select" : "Select Multiple"}
           </button>
           {!isBulkMode && (
-            <button className="btn-primary" onClick={openSuggestModal}>
-              <Plus size={18} />
-              Suggest Event
-            </button>
+            <>
+              <button 
+                className="btn-secondary" 
+                onClick={() => setIsSubscribeModalOpen(true)}
+                style={{ backgroundColor: 'white' }}
+              >
+                <CalendarPlus size={18} />
+                Subscribe
+              </button>
+              <button className="btn-primary" onClick={openSuggestModal}>
+                <Plus size={18} />
+                Suggest Event
+              </button>
+            </>
           )}
           <div style={{ position: 'relative' }}>
             <button 
@@ -757,6 +768,58 @@ const FullCalendar = () => {
           </div>
         </div>
       )}
+      {isSubscribeModalOpen && (
+        <div style={styles.modalOverlay} onClick={() => setIsSubscribeModalOpen(false)}>
+          <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={{color: 'white', margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                <CalendarPlus size={20} /> Subscribe to Calendar
+              </h2>
+              <button onClick={() => setIsSubscribeModalOpen(false)} style={styles.closeBtn}>
+                <X size={24} />
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <p style={{ marginBottom: '1rem', color: 'var(--color-text-main)', lineHeight: 1.5 }}>
+                You can sync the Training Calendar with Google Calendar, Apple Calendar, or Outlook by subscribing to the live feed URL below.
+              </p>
+              
+              <div style={{
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                backgroundColor: 'rgba(0,0,0,0.03)', 
+                padding: '0.75rem', 
+                borderRadius: '8px', 
+                border: '1px solid var(--color-border)',
+                marginBottom: '1rem'
+              }}>
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={`${window.location.origin}/api/calendar`} 
+                  style={{ ...styles.input, flexGrow: 1, border: 'none', backgroundColor: 'transparent', padding: 0 }} 
+                />
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/api/calendar`);
+                    alert('Copied to clipboard!');
+                  }}
+                  className="btn-secondary"
+                  style={{ padding: '0.4rem 0.6rem' }}
+                >
+                  <Copy size={16} />
+                </button>
+              </div>
+
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                <strong>For Google Calendar:</strong> Go to settings &gt; Add calendar &gt; "From URL" and paste the link above.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
