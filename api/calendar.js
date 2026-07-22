@@ -61,6 +61,8 @@ export default async function handler(req, res) {
         description: (evt.description || '') + (evt.link ? `\nLink: ${evt.link}` : ''),
         location: evt.location || evt.link || '',
         start: [year, month, day, isNaN(hour) ? 12 : hour, isNaN(minute) ? 0 : minute],
+        startInputType: 'local',
+        startOutputType: 'local',
         duration: { hours: 1, minutes: 0 },
         categories: [evt.type || 'general'],
         uid: `evt-${evt.id || Math.random().toString(36).substring(7)}@expsyndicate.com`,
