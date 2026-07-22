@@ -33,10 +33,10 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to fetch events' });
     }
 
-    const icsEvents = events.map(evt => {
+    const icsEvents = events.reduce((acc, evt) => {
       // Parse the date (YYYY-MM-DD) and time (HH:MM)
-      let year = 2024, month = 1, day = 1;
-      if (evt.date && evt.date.includes('-')) {
+      let year = NaN, month = NaN, day = NaN;
+      if (evt.date && typeof evt.date === 'string' && evt.date.includes('-')) {
         const parts = evt.date.split('-');
         year = parseInt(parts[0], 10);
         month = parseInt(parts[1], 10);
@@ -44,26 +44,30 @@ export default async function handler(req, res) {
       }
       
       let hour = 12, minute = 0;
-      if (evt.time && evt.time.includes(':')) {
+      if (evt.time && typeof evt.time === 'string' && evt.time.includes(':')) {
         const parts = evt.time.split(':');
         hour = parseInt(parts[0], 10);
         minute = parseInt(parts[1], 10);
       }
 
+      // Skip events with totally invalid dates
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
+        return acc;
+      }
+
       // Default duration is 1 hour since we don't have an end time in the DB
-      return {
+      acc.push({
         title: evt.title || 'Training Event',
         description: (evt.description || '') + (evt.link ? `\nLink: ${evt.link}` : ''),
         location: evt.location || evt.link || '',
-        // Format: [year, month, day, hour, minute]
-        start: [year, month, day, hour, minute],
+        start: [year, month, day, isNaN(hour) ? 12 : hour, isNaN(minute) ? 0 : minute],
         duration: { hours: 1, minutes: 0 },
         categories: [evt.type || 'general'],
-        url: evt.link || null,
-        uid: `evt-${evt.id}@expsyndicate.com`,
+        uid: `evt-${evt.id || Math.random().toString(36).substring(7)}@expsyndicate.com`,
         status: 'CONFIRMED',
-      };
-    });
+      });
+      return acc;
+    }, []);
 
     const { error: icsError, value } = ics.createEvents(icsEvents);
 
