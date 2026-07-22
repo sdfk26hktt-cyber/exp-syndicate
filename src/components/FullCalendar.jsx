@@ -797,12 +797,12 @@ const FullCalendar = () => {
                 <input 
                   type="text" 
                   readOnly 
-                  value={`${window.location.origin}/api/calendar`} 
+                  value={`${window.location.origin}/api/calendar?sync=1`} 
                   style={{ ...styles.input, flexGrow: 1, border: 'none', backgroundColor: 'transparent', padding: 0 }} 
                 />
                 <button 
                   onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/api/calendar`);
+                    navigator.clipboard.writeText(`${window.location.origin}/api/calendar?sync=1`);
                     alert('Copied to clipboard!');
                   }}
                   className="btn-secondary"
@@ -812,8 +812,10 @@ const FullCalendar = () => {
                 </button>
               </div>
 
-              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                <strong>For Google Calendar:</strong> Go to settings &gt; Add calendar &gt; "From URL" and paste the link above.
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <p style={{ margin: 0 }}><strong>Google Calendar:</strong> On the left menu, click the <strong>+</strong> next to "Other calendars" &gt; <strong>From URL</strong>, and paste the link.</p>
+                <p style={{ margin: 0 }}><strong>Apple Calendar:</strong> File &gt; New Calendar Subscription &gt; Paste the link.</p>
+                <p style={{ margin: 0 }}><strong>Outlook:</strong> Add Calendar &gt; Subscribe from web &gt; Paste the link.</p>
               </div>
             </div>
           </div>
