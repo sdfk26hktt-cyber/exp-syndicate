@@ -28,10 +28,23 @@ export default async function handler(req, res) {
       .select('*')
       .eq('status', 'approved');
 
-    if (error) {
-      console.error('Supabase query error:', error);
+    if (error || !events) {
       return res.status(500).json({ error: 'Failed to fetch events' });
     }
+
+    // Helper to convert Mountain Time to a UTC array handling DST correctly
+    const getUtcArrayFromMountainTime = (y, m, d, h, min) => {
+      const isDST = () => {
+        if (m < 3 || m > 11) return false;
+        if (m > 3 && m < 11) return true;
+        const previousSunday = d - new Date(y, m - 1, d).getDay();
+        if (m === 3) return previousSunday >= 8;
+        return previousSunday <= 0;
+      };
+      const offset = isDST() ? 6 : 7;
+      const utcDate = new Date(Date.UTC(y, m - 1, d, h + offset, min));
+      return [utcDate.getUTCFullYear(), utcDate.getUTCMonth() + 1, utcDate.getUTCDate(), utcDate.getUTCHours(), utcDate.getUTCMinutes()];
+    };
 
     const icsEvents = events.reduce((acc, evt) => {
       // Parse the date (YYYY-MM-DD) and time (HH:MM)
@@ -59,10 +72,9 @@ export default async function handler(req, res) {
       acc.push({
         title: evt.title || 'Training Event',
         description: (evt.description || '') + (evt.link ? `\nLink: ${evt.link}` : ''),
-        location: evt.location || evt.link || '',
-        start: [year, month, day, isNaN(hour) ? 12 : hour, isNaN(minute) ? 0 : minute],
-        startInputType: 'local',
-        startOutputType: 'local',
+        start: getUtcArrayFromMountainTime(year, month, day, isNaN(hour) ? 12 : hour, isNaN(minute) ? 0 : minute),
+        startInputType: 'utc',
+        startOutputType: 'utc',
         duration: { hours: 1, minutes: 0 },
         categories: [evt.type || 'general'],
         uid: `evt-${evt.id || Math.random().toString(36).substring(7)}@expsyndicate.com`,
