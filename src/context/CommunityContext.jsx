@@ -178,7 +178,7 @@ export const CommunityProvider = ({ children }) => {
     loadCommunityData();
   };
 
-  const addEvent = async (title, date, time, endTime, location, description, category = 'general') => {
+  const addEvent = async (title, date, time, endTime, location, description, category = 'general', instructor = '', submittedBy = '') => {
     const status = currentUser?.role === 'admin' ? 'approved' : 'pending';
     const newEvent = {
       id: `evt-${Date.now()}`,
@@ -190,6 +190,8 @@ export const CommunityProvider = ({ children }) => {
       description,
       status,
       type: category,
+      instructor,
+      submitted_by: submittedBy,
       attendees: []
     };
     await supabase.from('events').insert([newEvent]);
@@ -205,7 +207,8 @@ export const CommunityProvider = ({ children }) => {
       location: updatedData.location,
       description: updatedData.description,
       status: updatedData.status,
-      type: updatedData.category || 'general'
+      type: updatedData.category || 'general',
+      instructor: updatedData.instructor
     }).eq('id', eventId);
     loadCommunityData();
   };

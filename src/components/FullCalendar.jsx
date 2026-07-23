@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
-import { Calendar as CalendarIcon, Download, Plus, X, MapPin, CheckSquare, Square, ChevronDown, CalendarPlus, Copy } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Plus, X, MapPin, CheckSquare, Square, ChevronDown, CalendarPlus, Copy, User } from 'lucide-react';
 import LocationAutocomplete from './LocationAutocomplete';
 
 const CATEGORIES = {
@@ -30,6 +30,7 @@ const FullCalendar = () => {
   const [newEventLocation, setNewEventLocation] = useState('');
   const [newEventDesc, setNewEventDesc] = useState('');
   const [newEventCategory, setNewEventCategory] = useState('Sales Meeting');
+  const [newEventInstructor, setNewEventInstructor] = useState('');
 
   // Bulk Download State
   const [isBulkMode, setIsBulkMode] = useState(false);
@@ -162,11 +163,22 @@ const FullCalendar = () => {
           endTime: newEventEndTime,
           location: newEventLocation,
           description: newEventDesc,
-          category: newEventCategory
+          category: newEventCategory,
+          instructor: newEventInstructor
         });
         alert("Event updated successfully!");
       } else {
-        await addEvent(newEventTitle, newEventDate, newEventTime, newEventEndTime, newEventLocation, newEventDesc, newEventCategory);
+        await addEvent(
+          newEventTitle, 
+          newEventDate, 
+          newEventTime, 
+          newEventEndTime, 
+          newEventLocation, 
+          newEventDesc, 
+          newEventCategory,
+          newEventInstructor,
+          currentUser?.name || 'Anonymous'
+        );
         alert("Event submitted for admin approval!");
       }
       setIsSubmitting(false);
@@ -177,6 +189,7 @@ const FullCalendar = () => {
       setNewEventEndTime('');
       setNewEventLocation('');
       setNewEventDesc('');
+      setNewEventInstructor('');
       setNewEventCategory('Sales Meeting');
     }
   };
@@ -199,6 +212,7 @@ const FullCalendar = () => {
     setNewEventLocation(evt.location || '');
     setNewEventDesc(evt.description || '');
     setNewEventCategory(evt.type || 'Sales Meeting');
+    setNewEventInstructor(evt.instructor || '');
     setEditingEventId(evt.id);
     setSelectedEvent(null);
     setIsSubmitting(true);
@@ -219,6 +233,7 @@ const FullCalendar = () => {
     setNewEventEndTime('');
     setNewEventLocation('');
     setNewEventDesc('');
+    setNewEventInstructor('');
     setNewEventCategory('Sales Meeting');
     setIsSubmitting(true);
   };
@@ -680,6 +695,14 @@ const FullCalendar = () => {
                   placeholder="Location or Link (Optional)" 
                 />
                 
+                <input 
+                  type="text" 
+                  placeholder="Instructor Name (Optional)" 
+                  value={newEventInstructor} 
+                  onChange={(e) => setNewEventInstructor(e.target.value)} 
+                  style={styles.input} 
+                />
+                
                 <textarea placeholder="Description or meeting link..." value={newEventDesc} onChange={(e) => setNewEventDesc(e.target.value)} style={styles.textArea} rows={4} />
                 
                 <div style={{display: 'flex', justifyContent: 'flex-end', gap: '0.75rem'}}>
@@ -739,6 +762,13 @@ const FullCalendar = () => {
                 <div style={styles.detailRow}>
                   <MapPin size={16} color="var(--color-primary)" />
                   <span style={{color: 'var(--color-slate-blue)', fontWeight: '500'}}>{selectedEvent.location}</span>
+                </div>
+              )}
+              
+              {selectedEvent.instructor && (
+                <div style={styles.detailRow}>
+                  <User size={16} color="var(--color-primary)" />
+                  <span><strong>Instructor:</strong> {selectedEvent.instructor}</span>
                 </div>
               )}
               

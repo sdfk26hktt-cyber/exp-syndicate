@@ -636,6 +636,12 @@ const AdminDashboard = () => {
                         {evt.date && !isNaN(new Date(evt.date + 'T12:00:00').getTime()) ? new Date(evt.date + 'T12:00:00').toLocaleDateString() : (evt.date || 'No Date')} {evt.time && `at ${evt.time}`} {evt.endTime && `- ${evt.endTime}`} {evt.location && `| ${evt.location}`}
                       </p>
                       {evt.description && <p style={{margin: 0, fontSize: '0.85rem', color: 'var(--color-text-main)'}}>{evt.description}</p>}
+                      {(evt.instructor || evt.submitted_by) && (
+                        <div style={{marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1rem'}}>
+                          {evt.instructor && <span><strong>Instructor:</strong> {evt.instructor}</span>}
+                          {evt.submitted_by && <span><strong>Suggested By:</strong> {evt.submitted_by}</span>}
+                        </div>
+                      )}
                     </div>
                     <div style={{display: 'flex', gap: '0.5rem'}}>
                       <button onClick={() => approveEvent(evt.id)} className="btn-primary" style={{backgroundColor: 'var(--color-success)', padding: '0.5rem'}}>

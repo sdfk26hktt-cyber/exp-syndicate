@@ -71,7 +71,7 @@ export default async function handler(req, res) {
       // Default duration is 1 hour since we don't have an end time in the DB
       acc.push({
         title: evt.title || 'Training Event',
-        description: (evt.description || '') + (evt.link ? `\nLink: ${evt.link}` : ''),
+        description: (evt.instructor ? `Instructor: ${evt.instructor}\n\n` : '') + (evt.description || '') + (evt.link ? `\nLink: ${evt.link}` : ''),
         start: getUtcArrayFromMountainTime(year, month, day, isNaN(hour) ? 12 : hour, isNaN(minute) ? 0 : minute),
         startInputType: 'utc',
         startOutputType: 'utc',
