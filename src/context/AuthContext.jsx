@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    const email = session.user.email || session.user.phone || '';
+    const email = (session.user.email || session.user.phone || '').toLowerCase();
     let role = 'agent';
 
     // Default master admin
@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }) => {
     } else {
       // Check if user is in an 'admins' table in Supabase
       try {
-        const { data } = await supabase.from('admins').select('email').eq('email', email).single();
+        const { data } = await supabase.from('admins').select('email').ilike('email', email).single();
         if (data) role = 'admin';
       } catch (err) {
         // Table might not exist yet, default to agent
@@ -92,9 +92,9 @@ export const AuthProvider = ({ children }) => {
 
     // Prevent unauthorized accounts from being created
     if (safeId !== 'brian@brianburds.com' && safeId !== 'brenda@brianburds.com') {
-      const { data: adminData } = await supabase.from('admins').select('email').eq('email', safeId).single();
+      const { data: adminData } = await supabase.from('admins').select('email').ilike('email', safeId).single();
       if (!adminData) {
-        const { data: agentData } = await supabase.from('agents').select('id').eq('id', safeId).single();
+        const { data: agentData } = await supabase.from('agents').select('id').ilike('id', safeId).single();
         if (!agentData) {
           throw new Error("Account not found. You must be invited by an admin to log in.");
         }
