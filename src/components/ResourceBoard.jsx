@@ -314,9 +314,22 @@ const ResourceBoard = () => {
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
           <div style={{ backgroundColor: 'var(--color-background-alt)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-            <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>eXp Texas Broker Team</h3>
+            <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>Texas Managing Broker</h3>
+            <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>Karen Richards</p>
             <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', marginBottom: '0.25rem' }}>Email: tx.broker@exprealty.net</p>
             <p style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>eXp Realty LLC License: 603392</p>
+          </div>
+          <div style={{ backgroundColor: 'var(--color-background-alt)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+            <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>Listing & Open House Coord</h3>
+            <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>Lucy Elizando (Flex/Team)</p>
+            <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', marginBottom: '0.25rem' }}>Phone: 915-320-5457</p>
+            <p style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>Email: lucy@brianburds.com</p>
+          </div>
+          <div style={{ backgroundColor: 'var(--color-background-alt)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+            <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>Lead & Zillow Manager</h3>
+            <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>David Bitoon (Flex/Team)</p>
+            <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', marginBottom: '0.25rem' }}>Phone: 915-800-7543</p>
+            <p style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>Email: david@brianburds.com</p>
           </div>
           <div style={{ backgroundColor: 'var(--color-background-alt)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
             <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>Agent Support</h3>
