@@ -10,6 +10,7 @@ import ResourceBoard from './ResourceBoard';
 import { supabase } from '../lib/supabase';
 import ErrorBoundary from './ErrorBoundary';
 import PlaybookManager from './PlaybookManager';
+import AgentAutocomplete from './AgentAutocomplete';
 
 const AdminDashboard = () => {
   const { emulateUser } = useAuth();
@@ -52,8 +53,9 @@ const AdminDashboard = () => {
   const handleAddAdmin = async (e) => {
     e.preventDefault();
     if (!newAdminEmail.trim()) return;
+    const normalizedEmail = newAdminEmail.toLowerCase().trim();
     try {
-      const { error } = await supabase.from('admins').insert([{ email: newAdminEmail }]);
+      const { error } = await supabase.from('admins').insert([{ email: normalizedEmail }]);
       if (error) throw error;
       setNewAdminEmail('');
       fetchAdmins();
@@ -186,10 +188,11 @@ const AdminDashboard = () => {
 
   const handleAddAgent = async (e) => {
     e.preventDefault();
-    if (newAgentEmail && newAgentName) {
+    const normalizedEmail = newAgentEmail.toLowerCase().trim();
+    if (normalizedEmail && newAgentName) {
       if (newUserRole === 'admin') {
         try {
-          const { error } = await supabase.from('admins').insert([{ email: newAgentEmail }]);
+          const { error } = await supabase.from('admins').insert([{ email: normalizedEmail }]);
           if (error) throw error;
           fetchAdmins();
           alert('Admin added successfully!');
@@ -203,7 +206,7 @@ const AdminDashboard = () => {
         if (coSponsorName) {
           coSponsorData = { name: coSponsorName, phone: coSponsorPhone, email: coSponsorEmail };
         }
-        addAgent(newAgentEmail, newAgentName, sponsorData, coSponsorData);
+        addAgent(normalizedEmail, newAgentName, sponsorData, coSponsorData);
       }
       
       setNewAgentEmail('');
@@ -368,6 +371,15 @@ const AdminDashboard = () => {
                   <>
                 <div style={styles.formSection}>
                   <h4 className="text-sm font-semibold mb-2 text-dark-navy">Primary Sponsor</h4>
+                  <AgentAutocomplete 
+                    agents={agents} 
+                    placeholder="Search existing agents to auto-fill sponsor details..."
+                    onSelect={(agent) => {
+                      setSponsorName(agent.name || '');
+                      setSponsorEmail(agent.id || '');
+                      setSponsorPhone(agent.profile?.phone || '');
+                    }}
+                  />
                   <div style={styles.formGrid}>
                     <input type="text" placeholder="Sponsor Name" style={styles.input} value={sponsorName} onChange={(e) => setSponsorName(e.target.value)} required />
                     <input type="text" placeholder="Sponsor Phone" style={styles.input} value={sponsorPhone} onChange={(e) => setSponsorPhone(e.target.value)} required />
@@ -377,6 +389,15 @@ const AdminDashboard = () => {
 
                 <div style={styles.formSection}>
                   <h4 className="text-sm font-semibold mb-2 text-dark-navy">Co-Sponsor (Optional)</h4>
+                  <AgentAutocomplete 
+                    agents={agents} 
+                    placeholder="Search existing agents to auto-fill co-sponsor details..."
+                    onSelect={(agent) => {
+                      setCoSponsorName(agent.name || '');
+                      setCoSponsorEmail(agent.id || '');
+                      setCoSponsorPhone(agent.profile?.phone || '');
+                    }}
+                  />
                   <div style={styles.formGrid}>
                     <input type="text" placeholder="Co-Sponsor Name" style={styles.input} value={coSponsorName} onChange={(e) => setCoSponsorName(e.target.value)} />
                     <input type="text" placeholder="Co-Sponsor Phone" style={styles.input} value={coSponsorPhone} onChange={(e) => setCoSponsorPhone(e.target.value)} />

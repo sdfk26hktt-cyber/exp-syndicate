@@ -243,7 +243,8 @@ export const AgentProvider = ({ children }) => {
       if (settings) setAdminSettings(settings);
       
       if (currentUser?.role === 'agent') {
-        const myData = db.find(a => a.id === currentUser.id || a.id === currentUser.email);
+        const myEmail = (currentUser.email || currentUser.id || '').toLowerCase();
+        const myData = db.find(a => a.id?.toLowerCase() === myEmail);
         
         if (myData) {
           // Merge steps from currentPlaybook into saved phases from Supabase
