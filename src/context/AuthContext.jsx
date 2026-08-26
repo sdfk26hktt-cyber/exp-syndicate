@@ -10,28 +10,7 @@ export const AuthProvider = ({ children }) => {
   const [originalAdminUser, setOriginalAdminUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Restore original admin user if emulating
-    const savedAdmin = localStorage.getItem('mockAdminSession');
-    if (savedAdmin) {
-      try {
-        setOriginalAdminUser(JSON.parse(savedAdmin));
-      } catch (e) {
-        console.error("Failed to parse mockAdminSession", e);
-      }
-    }
-
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      handleSession(session);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   const handleSession = async (session) => {
     if (!session) {
@@ -82,6 +61,47 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   };
 
+  useEffect(() => {
+    // Restore original admin user if emulating
+    const savedAdmin = localStorage.getItem('mockAdminSession');
+    if (savedAdmin) {
+      try {
+        setOriginalAdminUser(JSON.parse(savedAdmin));
+      } catch (e) {
+        console.error("Failed to parse mockAdminSession", e);
+      }
+    }
+
+    // Check active sessions and sets the user
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+      }
+      handleSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const checkUserAuthorized = async (safeId) => {
+    if (safeId === 'brian@brianburds.com' || safeId === 'brenda@brianburds.com') {
+      return true;
+    }
+    try {
+      const { data: adminData } = await supabase.from('admins').select('email').ilike('email', safeId).single();
+      if (adminData) return true;
+      const { data: agentData } = await supabase.from('agents').select('id').ilike('id', safeId).single();
+      if (agentData) return true;
+    } catch (err) {
+      // Ignore not found errors from query
+    }
+    return false;
+  };
+
   const requestOtp = async (identifier) => {
     if (import.meta.env.VITE_SUPABASE_URL === undefined) {
        throw new Error("Supabase is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.");
@@ -91,14 +111,9 @@ export const AuthProvider = ({ children }) => {
     const authData = isEmail ? { email: safeId } : { phone: safeId.replace(/\D/g, '') };
 
     // Prevent unauthorized accounts from being created
-    if (safeId !== 'brian@brianburds.com' && safeId !== 'brenda@brianburds.com') {
-      const { data: adminData } = await supabase.from('admins').select('email').ilike('email', safeId).single();
-      if (!adminData) {
-        const { data: agentData } = await supabase.from('agents').select('id').ilike('id', safeId).single();
-        if (!agentData) {
-          throw new Error("Account not found. You must be invited by an admin to log in.");
-        }
-      }
+    const isAuth = await checkUserAuthorized(safeId);
+    if (!isAuth) {
+      throw new Error("Account not found. You must be invited or added by an admin to log in.");
     }
 
     const { error } = await supabase.auth.signInWithOtp(authData);
@@ -132,6 +147,87 @@ export const AuthProvider = ({ children }) => {
 
     if (res.error) throw res.error;
     return res.data.user;
+  };
+
+  const loginWithPassword = async (identifier, password) => {
+    if (import.meta.env.VITE_SUPABASE_URL === undefined) {
+      throw new Error("Supabase is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.");
+    }
+    const safeId = identifier.toLowerCase().trim();
+    if (!password) {
+      throw new Error("Please enter your password.");
+    }
+
+    // Check authorization first if not master admin
+    const isAuth = await checkUserAuthorized(safeId);
+    if (!isAuth) {
+      throw new Error("Account not found. You must be invited or added by an admin to log in.");
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: safeId,
+      password: password
+    });
+
+    if (error) {
+      if (error.message && (error.message.includes('Invalid login credentials') || error.message.includes('invalid_credentials'))) {
+        throw new Error("Invalid password or email. If you haven't set a password yet, please use 'Sign in with Email Code' or click 'Set up Password'.");
+      }
+      throw error;
+    }
+
+    return data.user;
+  };
+
+  const updatePassword = async (newPassword) => {
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error("Password must be at least 6 characters long.");
+    }
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+    if (error) throw error;
+    setIsPasswordRecovery(false);
+    return data.user;
+  };
+
+  const resetPasswordForEmail = async (email) => {
+    const safeEmail = email.toLowerCase().trim();
+    const isAuth = await checkUserAuthorized(safeEmail);
+    if (!isAuth) {
+      throw new Error("Account not found. You must be invited or added by an admin to reset a password.");
+    }
+    const { data, error } = await supabase.auth.resetPasswordForEmail(safeEmail, {
+      redirectTo: `${window.location.origin}/login?mode=recovery`
+    });
+    if (error) throw error;
+    return data;
+  };
+
+  const verifyOtpAndSetPassword = async (identifier, code, newPassword) => {
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error("Password must be at least 6 characters long.");
+    }
+    // First verify OTP to log in and create an active session
+    await login(identifier, code);
+    // Then set the user's password on the newly authenticated session
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+    if (error) throw error;
+    return data.user;
+  };
+
+  const createUserWithPassword = async (email, password) => {
+    const safeEmail = email.toLowerCase().trim();
+    const { data, error } = await supabase.auth.signUp({
+      email: safeEmail,
+      password: password
+    });
+    if (error && !error.message.includes('already registered')) {
+      throw error;
+    }
+    return data;
   };
 
   const emulateUser = (agentProfile) => {
@@ -180,7 +276,23 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, originalAdminUser, requestOtp, login, logout, emulateUser, stopEmulating, loading }}>
+    <AuthContext.Provider value={{ 
+      currentUser, 
+      originalAdminUser, 
+      requestOtp, 
+      login, 
+      loginWithPassword,
+      updatePassword,
+      resetPasswordForEmail,
+      verifyOtpAndSetPassword,
+      createUserWithPassword,
+      isPasswordRecovery,
+      setIsPasswordRecovery,
+      logout, 
+      emulateUser, 
+      stopEmulating, 
+      loading 
+    }}>
       {!loading && children}
     </AuthContext.Provider>
   );

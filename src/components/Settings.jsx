@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
-import { Settings as SettingsIcon, Save, User, Shield } from 'lucide-react';
+import { Settings as SettingsIcon, Save, User, Shield, Lock, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 const Settings = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, updatePassword } = useAuth();
   const { adminSettings, updateAdminSettings, currentAgentData, updateAgentProfile } = useAgent();
   
   // Local state for Agent Profile
@@ -21,6 +21,14 @@ const Settings = () => {
   const [sponsorName, setSponsorName] = useState(adminSettings.defaultSponsor.name);
   const [sponsorPhone, setSponsorPhone] = useState(adminSettings.defaultSponsor.phone);
   const [sponsorEmail, setSponsorEmail] = useState(adminSettings.defaultSponsor.email);
+
+  // Password update state
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -82,6 +90,39 @@ const Settings = () => {
       setSaveMessage('Global admin settings saved successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
     }, 800);
+  };
+
+  const handleUpdatePassword = async (e) => {
+    e.preventDefault();
+    if (newPass !== confirmPass) {
+      setPasswordError(true);
+      setPasswordMessage('Passwords do not match.');
+      return;
+    }
+    if (newPass.length < 6) {
+      setPasswordError(true);
+      setPasswordMessage('Password must be at least 6 characters.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    setPasswordMessage('');
+    setPasswordError(false);
+
+    try {
+      await updatePassword(newPass);
+      setPasswordError(false);
+      setPasswordMessage('Password updated successfully! You can now use this password to sign in.');
+      setNewPass('');
+      setConfirmPass('');
+      setTimeout(() => setPasswordMessage(''), 4000);
+    } catch (err) {
+      console.error(err);
+      setPasswordError(true);
+      setPasswordMessage(err.message || 'Failed to update password.');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   return (
@@ -166,6 +207,66 @@ const Settings = () => {
             <button type="submit" className="btn-primary" style={{ marginTop: '1rem', width: '100%' }} disabled={isSaving}>
               <Save size={16} />
               {isSaving ? 'Saving...' : 'Save Profile'}
+            </button>
+          </form>
+        </div>
+
+        {/* Security & Password Card (For all users) */}
+        <div className="card" style={{ alignSelf: 'start', borderTop: '3px solid var(--color-primary)' }}>
+          <div className="flex items-center gap-2 mb-4 border-b pb-4" style={{ borderColor: 'var(--color-border)' }}>
+            <Lock size={20} color="var(--color-primary)" />
+            <h2 className="text-lg m-0">Security & Password</h2>
+          </div>
+
+          <p className="text-sm text-muted mb-4">
+            Set or update your account password to sign in directly with your email and password.
+          </p>
+
+          {passwordMessage && (
+            <div style={passwordError ? styles.errorToast : styles.successToast}>
+              {passwordMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleUpdatePassword} style={styles.form}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>New Password</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input 
+                  type={showNewPass ? 'text' : 'password'} 
+                  style={{...styles.input, width: '100%', paddingRight: '2.5rem'}} 
+                  placeholder="At least 6 characters"
+                  value={newPass}
+                  onChange={(e) => setNewPass(e.target.value)}
+                  required
+                  minLength={6}
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowNewPass(!showNewPass)}
+                  style={styles.eyeBtn}
+                >
+                  {showNewPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Confirm New Password</label>
+              <input 
+                type="password" 
+                style={styles.input} 
+                placeholder="Repeat your password"
+                value={confirmPass}
+                onChange={(e) => setConfirmPass(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+
+            <button type="submit" className="btn-primary" style={{ marginTop: '1rem', width: '100%' }} disabled={isUpdatingPassword}>
+              <KeyRound size={16} />
+              {isUpdatingPassword ? 'Updating Password...' : 'Update Password'}
             </button>
           </form>
         </div>
@@ -279,6 +380,28 @@ const styles = {
     fontWeight: '600',
     border: '1px solid rgba(16, 185, 129, 0.2)',
     animation: 'fadeInSlideUp 0.3s ease'
+  },
+  errorToast: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    color: '#EF4444',
+    padding: '1rem',
+    borderRadius: 'var(--border-radius-sm)',
+    marginBottom: '1.5rem',
+    fontWeight: '600',
+    border: '1px solid rgba(239, 68, 68, 0.2)',
+    animation: 'fadeInSlideUp 0.3s ease'
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: '0.75rem',
+    background: 'none',
+    border: 'none',
+    color: 'var(--color-text-muted)',
+    cursor: 'pointer',
+    padding: '0.2rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   notificationBox: {
     backgroundColor: 'rgba(80, 108, 170, 0.05)',

@@ -22,6 +22,19 @@ const TeamPasswords = () => {
   // Visibility state per password ID
   const [visiblePasswords, setVisiblePasswords] = useState({});
 
+  const fetchPasswords = async () => {
+    try {
+      const { data } = await supabase.from('team_passwords').select('*').order('app_name', { ascending: true });
+      if (data) {
+        setPasswords(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchPasswords();
   }, []);
@@ -48,19 +61,6 @@ const TeamPasswords = () => {
       </div>
     );
   }
-
-  const fetchPasswords = async () => {
-    try {
-      const { data, error } = await supabase.from('team_passwords').select('*').order('app_name', { ascending: true });
-      if (data) {
-        setPasswords(data);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAddPassword = async (e) => {
     e.preventDefault();

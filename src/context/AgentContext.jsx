@@ -360,7 +360,7 @@ export const AgentProvider = ({ children }) => {
     return 'Capstone';
   };
 
-  const addAgent = async (email, name, sponsorData, coSponsorData) => {
+  const addAgent = async (email, name, sponsorData, coSponsorData, initialPassword) => {
     const newAgent = { 
       id: email, 
       name: name, 
@@ -376,6 +376,18 @@ export const AgentProvider = ({ children }) => {
     await supabase.from('agents').insert([newAgent]);
     loadAgents();
 
+    // If initialPassword provided, attempt pre-registering account in Supabase auth
+    if (initialPassword) {
+      try {
+        await supabase.auth.signUp({
+          email: email,
+          password: initialPassword
+        });
+      } catch (authErr) {
+        console.log('Pre-signup notice:', authErr);
+      }
+    }
+
     // Trigger the invitation email
     try {
       await fetch('/api/invite', {
@@ -383,7 +395,7 @@ export const AgentProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email, name })
+        body: JSON.stringify({ email, name, password: initialPassword })
       });
     } catch (err) {
       console.error('Failed to trigger invite email:', err);

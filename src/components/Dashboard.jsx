@@ -19,7 +19,7 @@ const Dashboard = () => {
   const { events, posts } = useCommunity();
   const navigate = useNavigate();
   const [greeting, setGreeting] = useState('Good day');
-  const [quote] = useState(quotes[Math.floor(Math.random() * quotes.length)]);
+  const [quote] = useState(() => quotes[Math.floor(Math.random() * quotes.length)]);
 
   useEffect(() => {
     const hour = new Date().getHours();

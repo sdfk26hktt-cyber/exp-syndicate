@@ -34,10 +34,6 @@ const ResourceBoard = () => {
   const [qRefLabel, setQRefLabel] = useState('');
   const [qRefValue, setQRefValue] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const fetchData = async () => {
     try {
       const [resData, faqData] = await Promise.all([
@@ -55,6 +51,10 @@ const ResourceBoard = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const handleAddResource = async (e) => {
     e.preventDefault();

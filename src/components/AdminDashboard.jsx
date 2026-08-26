@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2 } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -13,7 +13,7 @@ import PlaybookManager from './PlaybookManager';
 import AgentAutocomplete from './AgentAutocomplete';
 
 const AdminDashboard = () => {
-  const { currentUser, emulateUser } = useAuth();
+  const { currentUser, emulateUser, resetPasswordForEmail } = useAuth();
   const { agents, addAgent, getRank, adminSettings, updateAgentStatus, adminUpdateAgent, deleteAgent, currentAgentData } = useAgent();
   const { events, posts, addPost, updatePost, deletePost, addEvent, updateEvent, deleteEvent, approveEvent, rejectEvent, chats, sendMessage } = useCommunity();
   const userName = currentAgentData?.name || currentUser?.name || currentUser?.email || 'Admin';
@@ -113,6 +113,19 @@ const AdminDashboard = () => {
   const [coSponsorPhone, setCoSponsorPhone] = useState('');
   const [coSponsorEmail, setCoSponsorEmail] = useState('');
 
+  // Password for new agent/admin
+  const [newAgentPassword, setNewAgentPassword] = useState('');
+  const [showNewAgentPassword, setShowNewAgentPassword] = useState(false);
+  const [actionSuccessMsg, setActionSuccessMsg] = useState('');
+
+  const generateRandomPassword = () => {
+    const words = ['Syndicate', 'Realty', 'Victory', 'Summit', 'Apex', 'Premier', 'Champion'];
+    const word = words[Math.floor(Math.random() * words.length)];
+    const num = Math.floor(1000 + Math.random() * 9000);
+    const special = '!#$*'[Math.floor(Math.random() * 4)];
+    setNewAgentPassword(`${word}${num}${special}`);
+  };
+
   const [showAddForm, setShowAddForm] = useState(false);
 
   // Community Feed State
@@ -203,8 +216,16 @@ const AdminDashboard = () => {
         try {
           const { error } = await supabase.from('admins').insert([{ email: normalizedEmail }]);
           if (error) throw error;
+          if (newAgentPassword) {
+            try {
+              await supabase.auth.signUp({ email: normalizedEmail, password: newAgentPassword });
+            } catch (authErr) {
+              console.log('Admin pre-signup:', authErr);
+            }
+          }
           fetchAdmins();
-          alert('Admin added successfully!');
+          setActionSuccessMsg(`Admin ${newAgentName} added successfully!`);
+          setTimeout(() => setActionSuccessMsg(''), 4000);
         } catch (err) {
           alert('Error adding admin: ' + err.message);
           return;
@@ -215,11 +236,14 @@ const AdminDashboard = () => {
         if (coSponsorName) {
           coSponsorData = { name: coSponsorName, phone: coSponsorPhone, email: coSponsorEmail };
         }
-        addAgent(normalizedEmail, newAgentName, sponsorData, coSponsorData);
+        await addAgent(normalizedEmail, newAgentName, sponsorData, coSponsorData, newAgentPassword);
+        setActionSuccessMsg(`Agent ${newAgentName} invited successfully!`);
+        setTimeout(() => setActionSuccessMsg(''), 4000);
       }
       
       setNewAgentEmail('');
       setNewAgentName('');
+      setNewAgentPassword('');
       setCoSponsorName('');
       setCoSponsorPhone('');
       setCoSponsorEmail('');
@@ -367,6 +391,23 @@ const AdminDashboard = () => {
         </button>
       </div>
 
+      {actionSuccessMsg && (
+        <div style={{
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          color: 'var(--color-success)',
+          padding: '0.85rem 1.25rem',
+          borderRadius: 'var(--border-radius-sm)',
+          marginBottom: '1rem',
+          fontWeight: '600',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <Check size={18} /> {actionSuccessMsg}
+        </div>
+      )}
+
       {activeTab === 'pipeline' && (
         <>
           <div className="flex justify-end mb-4">
@@ -390,6 +431,41 @@ const AdminDashboard = () => {
                     <input type="text" placeholder="Full Name" style={styles.input} value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} required />
                     <input type="email" placeholder="Email Address" style={styles.input} value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} required />
                   </div>
+                </div>
+
+                <div style={styles.formSection}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <h4 className="text-sm font-semibold m-0 text-dark-navy flex items-center gap-1">
+                      <Lock size={14} /> Initial Password (Optional)
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={generateRandomPassword}
+                      className="btn-secondary"
+                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', backgroundColor: 'var(--color-white)' }}
+                    >
+                      <Sparkles size={12} color="var(--color-primary)" /> Generate Password
+                    </button>
+                  </div>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type={showNewAgentPassword ? 'text' : 'password'} 
+                      placeholder="Leave blank for code-only login, or set/generate a password" 
+                      style={{...styles.input, width: '100%', paddingRight: '2.5rem'}} 
+                      value={newAgentPassword} 
+                      onChange={(e) => setNewAgentPassword(e.target.value)} 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewAgentPassword(!showNewAgentPassword)}
+                      style={{ position: 'absolute', right: '0.75rem', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                    >
+                      {showNewAgentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0 0' }}>
+                    If provided, the password will be created and included in their welcome email. Users can also log in via OTP code at any time.
+                  </p>
                 </div>
 
                 {newUserRole === 'agent' && (
@@ -525,6 +601,25 @@ const AdminDashboard = () => {
                                   style={{ padding: '0.4rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
                                 >
                                   <LogIn size={14} /> Log In As
+                                </button>
+                                <button 
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm(`Send password reset email to ${a.id}?`)) {
+                                      try {
+                                        await resetPasswordForEmail(a.id);
+                                        setActionSuccessMsg(`Password reset link sent to ${a.id}`);
+                                        setTimeout(() => setActionSuccessMsg(''), 4000);
+                                      } catch (err) {
+                                        alert(`Failed to send password reset: ${err.message}`);
+                                      }
+                                    }
+                                  }}
+                                  className="btn-secondary"
+                                  style={{ padding: '0.4rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
+                                  title="Send Password Reset Email"
+                                >
+                                  <KeyRound size={14} /> Reset Pass
                                 </button>
                                 <button 
                                   onClick={(e) => {

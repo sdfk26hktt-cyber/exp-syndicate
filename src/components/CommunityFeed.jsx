@@ -56,11 +56,14 @@ const CommunityFeed = () => {
   // Chat Modal State
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
+  const [defaultChatMessages] = useState(() => [
+    { sender: 'System', text: 'Connecting to an admin...', timestamp: new Date(Date.now() - 60000).toISOString() },
+    { sender: 'Admin', text: 'Hi there! How can I help you today?', timestamp: new Date().toISOString() }
+  ]);
   
   const activeChatMessages = currentUser && chats[currentUser.id] 
     ? chats[currentUser.id].messages 
-    : [{ sender: 'System', text: 'Connecting to an admin...', timestamp: new Date(Date.now() - 60000).toISOString() },
-       { sender: 'Admin', text: 'Hi there! How can I help you today?', timestamp: new Date().toISOString() }];
+    : defaultChatMessages;
 
   const handleSendChat = (e) => {
     e.preventDefault();
