@@ -86,7 +86,11 @@ const AdminDashboard = () => {
   const [editingAgent, setEditingAgent] = useState(null);
   const [editAgentName, setEditAgentName] = useState('');
   const [editAgentPhone, setEditAgentPhone] = useState('');
+  const [editAgentAltPhone, setEditAgentAltPhone] = useState('');
+  const [editAgentAddress, setEditAgentAddress] = useState('');
   const [editAgentLicense, setEditAgentLicense] = useState('');
+  const [editAgentEmergencyName, setEditAgentEmergencyName] = useState('');
+  const [editAgentEmergencyPhone, setEditAgentEmergencyPhone] = useState('');
   
   const handleEditAgentSubmit = async (e) => {
     e.preventDefault();
@@ -94,10 +98,15 @@ const AdminDashboard = () => {
     
     await adminUpdateAgent(editingAgent.id, editAgentName, {
       phone: editAgentPhone,
-      licenseNumber: editAgentLicense
+      altPhone: editAgentAltPhone,
+      address: editAgentAddress,
+      licenseNumber: editAgentLicense,
+      emergencyName: editAgentEmergencyName,
+      emergencyPhone: editAgentEmergencyPhone
     });
     setEditingAgent(null);
-    alert("Agent updated successfully!");
+    setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
+    setTimeout(() => setActionSuccessMsg(''), 4000);
   };
   const [newAgentEmail, setNewAgentEmail] = useState('');
   const [newAgentName, setNewAgentName] = useState('');
@@ -588,7 +597,11 @@ const AdminDashboard = () => {
                                     setEditingAgent(a);
                                     setEditAgentName(a.name || '');
                                     setEditAgentPhone(a.profile?.phone || '');
+                                    setEditAgentAltPhone(a.profile?.altPhone || '');
+                                    setEditAgentAddress(a.profile?.address || '');
                                     setEditAgentLicense(a.profile?.licenseNumber || '');
+                                    setEditAgentEmergencyName(a.profile?.emergencyName || '');
+                                    setEditAgentEmergencyPhone(a.profile?.emergencyPhone || '');
                                   }}
                                   className="btn-secondary"
                                   style={{ padding: '0.4rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
@@ -657,54 +670,109 @@ const AdminDashboard = () => {
                 backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000,
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
-                <div className="card" style={{ width: '90%', maxWidth: '500px', backgroundColor: 'var(--color-white)', position: 'relative' }}>
+                <div className="card" style={{ width: '90%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--color-white)', position: 'relative' }}>
                   <button 
                     onClick={() => setEditingAgent(null)}
                     style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}
                   >
                     <X size={20} color="var(--color-text-muted)" />
                   </button>
-                  <h2 style={{ marginTop: 0, marginBottom: '1.5rem', color: 'var(--color-dark-navy)' }}>Edit Agent Info</h2>
+                  <h2 style={{ marginTop: 0, marginBottom: '0.25rem', color: 'var(--color-dark-navy)' }}>Edit Agent Information</h2>
+                  <p className="text-xs text-muted mb-4">Update contact information and profile for {editingAgent.name || editingAgent.id}</p>
                   
-                  <form onSubmit={handleEditAgentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div>
-                      <label style={styles.label}>Agent Name</label>
-                      <input 
-                        type="text" 
-                        value={editAgentName} 
-                        onChange={(e) => setEditAgentName(e.target.value)} 
-                        style={styles.input} 
-                        required 
-                      />
+                  <form onSubmit={handleEditAgentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    <div style={styles.formGrid}>
+                      <div>
+                        <label style={styles.label}>Agent Name</label>
+                        <input 
+                          type="text" 
+                          value={editAgentName} 
+                          onChange={(e) => setEditAgentName(e.target.value)} 
+                          style={styles.input} 
+                          required 
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Email Address (Read-only)</label>
+                        <input 
+                          type="text" 
+                          value={editingAgent.id} 
+                          style={{ ...styles.input, backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }} 
+                          disabled 
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label style={styles.label}>Email Address (Cannot be changed)</label>
-                      <input 
-                        type="text" 
-                        value={editingAgent.id} 
-                        style={{ ...styles.input, backgroundColor: '#f5f5f5', color: '#999' }} 
-                        disabled 
-                      />
+
+                    <div style={styles.formGrid}>
+                      <div>
+                        <label style={styles.label}>Primary Phone</label>
+                        <input 
+                          type="tel" 
+                          placeholder="(555) 000-0000"
+                          value={editAgentPhone} 
+                          onChange={(e) => setEditAgentPhone(e.target.value)} 
+                          style={styles.input} 
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Alternative Phone</label>
+                        <input 
+                          type="tel" 
+                          placeholder="(555) 999-9999"
+                          value={editAgentAltPhone} 
+                          onChange={(e) => setEditAgentAltPhone(e.target.value)} 
+                          style={styles.input} 
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label style={styles.label}>Phone Number</label>
-                      <input 
-                        type="tel" 
-                        value={editAgentPhone} 
-                        onChange={(e) => setEditAgentPhone(e.target.value)} 
-                        style={styles.input} 
-                      />
+
+                    <div style={styles.formGrid}>
+                      <div>
+                        <label style={styles.label}>License Number</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. 0748392"
+                          value={editAgentLicense} 
+                          onChange={(e) => setEditAgentLicense(e.target.value)} 
+                          style={styles.input} 
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Mailing / Office Address</label>
+                        <input 
+                          type="text" 
+                          placeholder="123 Main St, City, ST, ZIP"
+                          value={editAgentAddress} 
+                          onChange={(e) => setEditAgentAddress(e.target.value)} 
+                          style={styles.input} 
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label style={styles.label}>License Number</label>
-                      <input 
-                        type="text" 
-                        value={editAgentLicense} 
-                        onChange={(e) => setEditAgentLicense(e.target.value)} 
-                        style={styles.input} 
-                      />
+
+                    <div style={styles.formGrid}>
+                      <div>
+                        <label style={styles.label}>Emergency Contact Name</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. Jane Doe"
+                          value={editAgentEmergencyName} 
+                          onChange={(e) => setEditAgentEmergencyName(e.target.value)} 
+                          style={styles.input} 
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Emergency Contact Phone</label>
+                        <input 
+                          type="tel" 
+                          placeholder="(555) 000-0000"
+                          value={editAgentEmergencyPhone} 
+                          onChange={(e) => setEditAgentEmergencyPhone(e.target.value)} 
+                          style={styles.input} 
+                        />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.75rem' }}>
                       <button type="button" className="btn-secondary" onClick={() => setEditingAgent(null)}>Cancel</button>
                       <button type="submit" className="btn-primary">Save Changes</button>
                     </div>

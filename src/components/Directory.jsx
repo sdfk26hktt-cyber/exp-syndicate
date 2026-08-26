@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAgent } from '../context/AgentContext';
-import { Mail, Phone, Download, Search, User } from 'lucide-react';
+import { Mail, Phone, Download, Search, User, MapPin, Award, Globe, Smartphone } from 'lucide-react';
 
 const Directory = () => {
   const { agents } = useAgent();
@@ -13,8 +13,10 @@ const Directory = () => {
     const searchString = searchTerm.toLowerCase();
     const nameMatch = agent.name?.toLowerCase().includes(searchString);
     const emailMatch = agent.id?.toLowerCase().includes(searchString);
+    const phoneMatch = agent.profile?.phone?.toLowerCase().includes(searchString);
+    const licenseMatch = agent.profile?.licenseNumber?.toLowerCase().includes(searchString);
     
-    return nameMatch || emailMatch;
+    return nameMatch || emailMatch || phoneMatch || licenseMatch;
   });
 
   // Function to generate and download a vCard (.vcf)
@@ -27,6 +29,10 @@ const Directory = () => {
     
     const emailStr = agent.id || ''; // The id is typically their email
     const phoneStr = agent.profile?.phone || '';
+    const altPhoneStr = agent.profile?.altPhone || '';
+    const addressStr = agent.profile?.address || '';
+    const websiteStr = agent.profile?.website || '';
+    const licenseStr = agent.profile?.licenseNumber || '';
     
     const vcard = [
       'BEGIN:VCARD',
@@ -34,8 +40,12 @@ const Directory = () => {
       `N:${lastName};${firstName};;;`,
       `FN:${nameStr}`,
       `ORG:eXp Syndicate`,
+      licenseStr ? `TITLE:Real Estate Agent (Lic: ${licenseStr})` : 'TITLE:Real Estate Agent',
       phoneStr ? `TEL;TYPE=WORK,VOICE:${phoneStr}` : '',
+      altPhoneStr ? `TEL;TYPE=CELL,VOICE:${altPhoneStr}` : '',
       emailStr ? `EMAIL;TYPE=PREF,INTERNET:${emailStr}` : '',
+      addressStr ? `ADR;TYPE=WORK:;;${addressStr};;;;` : '',
+      websiteStr ? `URL:${websiteStr}` : '',
       'END:VCARD'
     ].filter(Boolean).join('\n');
 
@@ -54,7 +64,7 @@ const Directory = () => {
     <div className="animate-fade-in" style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h1 className="text-2xl font-semibold mb-2">Syndicate Directory</h1>
+          <h1 className="text-2xl font-semibold mb-2 text-dark-navy">Syndicate Directory</h1>
           <p className="text-muted">Find and connect with fellow agents in the network.</p>
         </div>
         
@@ -62,7 +72,7 @@ const Directory = () => {
           <Search size={20} style={styles.searchIcon} />
           <input 
             type="text" 
-            placeholder="Search by name or email..." 
+            placeholder="Search by name, email, phone, or license..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={styles.searchInput}
@@ -79,20 +89,27 @@ const Directory = () => {
               </div>
               <div style={styles.nameContainer}>
                 <h3 style={styles.name}>{agent.name || 'No Name Provided'}</h3>
-                <span style={styles.roleBadge}>
-                  {agent.role === 'admin' ? 'Admin' : 'Agent'}
-                </span>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
+                  <span style={styles.roleBadge}>
+                    {agent.role === 'admin' ? 'Admin' : 'Agent'}
+                  </span>
+                  {agent.profile?.licenseNumber && (
+                    <span style={{ ...styles.roleBadge, backgroundColor: 'rgba(44, 90, 160, 0.1)', color: 'var(--color-primary)' }}>
+                      Lic #{agent.profile.licenseNumber}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
             <div style={styles.contactInfo}>
               <div style={styles.infoRow}>
-                <Mail size={16} color="var(--color-primary)" />
+                <Mail size={15} color="var(--color-primary)" />
                 <a href={`mailto:${agent.id}`} style={styles.link}>{agent.id}</a>
               </div>
               
               <div style={styles.infoRow}>
-                <Phone size={16} color="var(--color-primary)" />
+                <Phone size={15} color="var(--color-primary)" />
                 {agent.profile?.phone ? (
                   <a href={`tel:${agent.profile.phone.replace(/[^0-9+]/g, '')}`} style={styles.link}>
                     {agent.profile.phone}
@@ -101,6 +118,31 @@ const Directory = () => {
                   <span style={styles.noData}>No phone provided</span>
                 )}
               </div>
+
+              {agent.profile?.altPhone && (
+                <div style={styles.infoRow}>
+                  <Smartphone size={15} color="var(--color-primary)" />
+                  <a href={`tel:${agent.profile.altPhone.replace(/[^0-9+]/g, '')}`} style={styles.link}>
+                    {agent.profile.altPhone} (Mobile)
+                  </a>
+                </div>
+              )}
+
+              {agent.profile?.address && (
+                <div style={styles.infoRow}>
+                  <MapPin size={15} color="var(--color-primary)" />
+                  <span style={{ fontSize: '0.85rem', color: 'var(--color-text-main)' }}>{agent.profile.address}</span>
+                </div>
+              )}
+
+              {agent.profile?.website && (
+                <div style={styles.infoRow}>
+                  <Globe size={15} color="var(--color-primary)" />
+                  <a href={agent.profile.website.startsWith('http') ? agent.profile.website : `https://${agent.profile.website}`} target="_blank" rel="noopener noreferrer" style={styles.link}>
+                    {agent.profile.website.replace(/^https?:\/\//, '')}
+                  </a>
+                </div>
+              )}
             </div>
 
             <button 
@@ -108,7 +150,7 @@ const Directory = () => {
               style={styles.downloadBtn}
               onClick={() => downloadVCard(agent)}
             >
-              <Download size={16} /> Save Contact
+              <Download size={16} /> Save Contact (.vcf)
             </button>
           </div>
         ))}
