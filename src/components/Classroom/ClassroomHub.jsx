@@ -97,20 +97,96 @@ const ClassroomHub = () => {
   };
 
   return (
-    <div className="animate-fade-in" style={styles.container}>
+    <div className="animate-fade-in classroom-hub-container" style={styles.container}>
+      <style>{`
+        .classroom-hub-container {
+          padding: 2rem;
+          max-width: 1280px;
+          margin: 0 auto;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .classroom-hero-card {
+          background: linear-gradient(135deg, #0b192c 0%, #1e3a8a 60%, #0f172a 100%);
+          border-radius: 16px;
+          padding: 2.5rem;
+          color: white;
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          align-items: center;
+          gap: 2rem;
+          margin-bottom: 2rem;
+          box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .classroom-hero-left {
+          flex: 1 1 500px;
+          min-width: 0;
+        }
+        .classroom-hero-right {
+          flex: 1 1 300px;
+          max-width: 380px;
+          width: 100%;
+        }
+        .classroom-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 1.75rem;
+        }
+
+        @media (max-width: 1023px) {
+          .classroom-hub-container {
+            padding: 0.75rem 0.25rem 2.5rem 0.25rem;
+          }
+          .classroom-hero-card {
+            padding: 1.5rem;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+          }
+          .classroom-hero-left {
+            flex: 1 1 100%;
+          }
+          .classroom-hero-right {
+            max-width: 100%;
+            flex: 1 1 100%;
+          }
+          .classroom-grid {
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.25rem;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .classroom-hub-container {
+            padding: 0 0 2rem 0;
+          }
+          .classroom-hero-title {
+            font-size: 1.6rem !important;
+          }
+          .classroom-hero-badges {
+            gap: 0.75rem !important;
+            padding: 0.75rem !important;
+          }
+          .classroom-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
       {/* Hero Section */}
-      <div style={styles.heroCard}>
-        <div style={styles.heroLeft}>
+      <div className="classroom-hero-card">
+        <div className="classroom-hero-left">
           <div style={styles.heroTag}>
             <GraduationCap size={16} />
             <span>SYNDICATE CLASSROOM</span>
           </div>
-          <h1 style={styles.heroTitle}>Production & Systems Mastery</h1>
+          <h1 className="classroom-hero-title" style={styles.heroTitle}>Production & Systems Mastery</h1>
           <p style={styles.heroSubtitle}>
             Step-by-step training playbooks, video masterclasses, and actionable conversion scripts to scale your real estate business.
           </p>
 
-          <div style={styles.heroBadges}>
+          <div className="classroom-hero-badges" style={styles.heroBadges}>
             <div style={styles.heroStat}>
               <span style={styles.heroStatValue}>{courses.length}</span>
               <span style={styles.heroStatLabel}>Courses</span>
@@ -137,7 +213,7 @@ const ClassroomHub = () => {
         </div>
 
         {/* Hero Right: Progress Card */}
-        <div style={styles.heroRight}>
+        <div className="classroom-hero-right">
           <div style={styles.progressBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'rgba(255,255,255,0.85)' }}>CLASSROOM COMPLETION</span>
@@ -194,7 +270,7 @@ const ClassroomHub = () => {
       </div>
 
       {/* Courses Grid */}
-      <div style={styles.grid}>
+      <div className="classroom-grid">
         {filteredCourses.map(course => {
           const stats = getCourseStats(course);
 

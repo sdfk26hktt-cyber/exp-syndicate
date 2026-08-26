@@ -18,7 +18,8 @@ import {
   FileText, 
   FileSpreadsheet, 
   Check,
-  Lock
+  Lock,
+  Layers
 } from 'lucide-react';
 import { useAgent } from '../../context/AgentContext';
 import { useAuth } from '../../context/AuthContext';
@@ -35,6 +36,9 @@ const CoursePlayer = () => {
     gamificationSettings,
     xp 
   } = useAgent();
+
+  // Mobile Tab State: 'lesson' | 'curriculum'
+  const [mobileTab, setMobileTab] = useState('lesson');
 
   // Find course
   const currentCourse = (courses || []).find(c => c.id === courseId);
@@ -66,10 +70,10 @@ const CoursePlayer = () => {
   // If no course found
   if (!currentCourse) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center' }}>
+      <div style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
         <h2>Course not found</h2>
         <p className="text-muted" style={{ marginBottom: '1.5rem' }}>The requested course could not be loaded.</p>
-        <Link to="/classroom" className="btn-primary">
+        <Link to="/classroom" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
           <ArrowLeft size={16} /> Return to Classroom
         </Link>
       </div>
@@ -85,7 +89,7 @@ const CoursePlayer = () => {
 
   if (isLocked) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', maxWidth: '600px', margin: '2rem auto', backgroundColor: 'white', borderRadius: '16px', border: '1px solid var(--color-border)' }}>
+      <div style={{ padding: '3rem 1.5rem', textAlign: 'center', maxWidth: '600px', margin: '2rem auto', backgroundColor: 'white', borderRadius: '16px', border: '1px solid var(--color-border)' }}>
         <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
           <Lock size={32} color="var(--color-danger)" />
         </div>
@@ -93,7 +97,7 @@ const CoursePlayer = () => {
         <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
           This training unlocks at <strong>Level {requiredLevel}</strong>. Continue completing onboarding checklist tasks and participating in the syndicate to level up!
         </p>
-        <Link to="/classroom" className="btn-primary">
+        <Link to="/classroom" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
           <ArrowLeft size={16} /> Back to Classroom Catalog
         </Link>
       </div>
@@ -113,6 +117,7 @@ const CoursePlayer = () => {
 
   const handleSelectLesson = (lesId) => {
     navigate(`/classroom/${currentCourse.id}/${lesId}`);
+    setMobileTab('lesson');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -137,6 +142,7 @@ const CoursePlayer = () => {
       if (nextLesson) {
         setTimeout(() => {
           navigate(`/classroom/${currentCourse.id}/${nextLesson.id}`);
+          setMobileTab('lesson');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 1000);
       }
@@ -183,7 +189,204 @@ const CoursePlayer = () => {
   const embedUrl = getEmbedUrl(currentLesson?.videoUrl);
 
   return (
-    <div className="animate-fade-in" style={styles.container}>
+    <div className="animate-fade-in course-player-container">
+      {/* Dynamic Mobile & Desktop Responsive Styles */}
+      <style>{`
+        .course-player-container {
+          padding: 1.5rem 2rem;
+          max-width: 1440px;
+          margin: 0 auto;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .course-player-topbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1.25rem;
+          padding-bottom: 0.875rem;
+          border-bottom: 1px solid var(--color-border);
+          flex-wrap: wrap;
+          gap: 0.75rem;
+        }
+        .course-player-breadcrumbs {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.875rem;
+          flex-wrap: wrap;
+          min-width: 0;
+        }
+        .course-player-topbar-right {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        .course-player-mobile-tabs {
+          display: none;
+        }
+        .course-player-layout {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 360px;
+          gap: 2rem;
+          align-items: start;
+        }
+        .course-player-main {
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+          min-width: 0;
+        }
+        .course-player-sidebar {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          position: sticky;
+          top: 1rem;
+          min-width: 0;
+        }
+        .course-player-resources-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 0.875rem;
+        }
+        .course-bottom-nav {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+          background-color: white;
+          padding: 1.25rem 1.5rem;
+          border-radius: 12px;
+          border: 1px solid var(--color-border);
+        }
+        .course-bottom-complete-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1.5rem;
+          border-radius: 8px;
+          border: 1px solid transparent;
+          font-size: 0.95rem;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .course-bottom-nav-arrows {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        /* Tablet & Mobile Breakpoint (< 1024px) */
+        @media (max-width: 1023px) {
+          .course-player-container {
+            padding: 0.5rem 0 2.5rem 0;
+          }
+          .course-player-topbar {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+          }
+          .course-player-topbar-right {
+            justify-content: space-between;
+            width: 100%;
+          }
+          .course-player-mobile-tabs {
+            display: flex;
+            background: #f1f5f9;
+            padding: 4px;
+            border-radius: 10px;
+            gap: 4px;
+            margin-bottom: 1.25rem;
+          }
+          .course-player-mobile-tab-btn {
+            flex: 1;
+            padding: 0.65rem 0.75rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            transition: all 0.15s ease;
+          }
+          .course-player-mobile-tab-btn.active {
+            background: white;
+            color: var(--color-primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+          .course-player-mobile-tab-btn:not(.active) {
+            background: transparent;
+            color: var(--color-text-secondary);
+          }
+          .course-player-layout {
+            display: block;
+          }
+          .course-player-main.mobile-hidden {
+            display: none !important;
+          }
+          .course-player-sidebar.mobile-hidden {
+            display: none !important;
+          }
+          .course-player-sidebar {
+            position: static;
+            width: 100%;
+          }
+          .course-player-resources-grid {
+            grid-template-columns: 1fr;
+          }
+          .course-bottom-nav {
+            flex-direction: column;
+            gap: 0.875rem;
+            padding: 1rem;
+          }
+          .course-bottom-complete-btn {
+            width: 100%;
+            padding: 0.85rem 1rem;
+            font-size: 0.95rem;
+          }
+          .course-bottom-nav-arrows {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            gap: 0.5rem;
+          }
+          .course-bottom-nav-arrows button {
+            flex: 1;
+            justify-content: center;
+          }
+          .lesson-title-text {
+            font-size: 1.25rem !important;
+          }
+          .lesson-header-card-box {
+            padding: 1rem !important;
+          }
+          .section-card-box {
+            padding: 1rem !important;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .lesson-title-text {
+            font-size: 1.15rem !important;
+          }
+          .breadcrumb-text-course {
+            max-width: 120px !important;
+          }
+          .breadcrumb-text-lesson {
+            max-width: 130px !important;
+          }
+        }
+      `}</style>
+
       {/* Celebration Floating Toast */}
       {celebrationToast && (
         <div style={styles.toast}>
@@ -193,23 +396,23 @@ const CoursePlayer = () => {
       )}
 
       {/* Top Header Bar / Breadcrumb */}
-      <div style={styles.topBar}>
-        <div style={styles.breadcrumbs}>
+      <div className="course-player-topbar">
+        <div className="course-player-breadcrumbs">
           <Link to="/classroom" style={styles.backLink}>
             <ArrowLeft size={16} />
             <span>Classroom</span>
           </Link>
           <ChevronRight size={14} color="var(--color-text-muted)" />
-          <span style={styles.breadcrumbCourse}>{currentCourse.title}</span>
+          <span className="breadcrumb-text-course" style={styles.breadcrumbCourse}>{currentCourse.title}</span>
           {currentLesson && (
             <>
               <ChevronRight size={14} color="var(--color-text-muted)" />
-              <span style={styles.breadcrumbLesson}>{currentLesson.title}</span>
+              <span className="breadcrumb-text-lesson" style={styles.breadcrumbLesson}>{currentLesson.title}</span>
             </>
           )}
         </div>
 
-        <div style={styles.topBarRight}>
+        <div className="course-player-topbar-right">
           <LevelBadge level={requiredLevel} size="xs" />
           <div style={styles.courseProgressPill}>
             <span>{completedCount}/{totalLessons} Done</span>
@@ -220,19 +423,39 @@ const CoursePlayer = () => {
         </div>
       </div>
 
-      {/* Main 2-Column LMS Player Grid */}
-      <div style={styles.playerLayout}>
+      {/* Mobile Tab Switcher (Lesson vs Syllabus) */}
+      <div className="course-player-mobile-tabs">
+        <button 
+          type="button" 
+          className={`course-player-mobile-tab-btn ${mobileTab === 'lesson' ? 'active' : ''}`}
+          onClick={() => setMobileTab('lesson')}
+        >
+          <Play size={15} />
+          <span>Lesson Content</span>
+        </button>
+        <button 
+          type="button" 
+          className={`course-player-mobile-tab-btn ${mobileTab === 'curriculum' ? 'active' : ''}`}
+          onClick={() => setMobileTab('curriculum')}
+        >
+          <Layers size={15} />
+          <span>Syllabus ({completedCount}/{totalLessons})</span>
+        </button>
+      </div>
+
+      {/* Main LMS Player Grid / Responsive Layout */}
+      <div className="course-player-layout">
         {/* Left: Video, Interactive Steps, Study Notes, & Actions */}
-        <div style={styles.mainContent}>
-          {/* Lesson Header */}
-          <div style={styles.lessonHeaderCard}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-              <div>
+        <div className={`course-player-main ${mobileTab === 'curriculum' ? 'mobile-hidden' : ''}`}>
+          {/* Lesson Header Card */}
+          <div className="lesson-header-card-box" style={styles.lessonHeaderCard}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '180px' }}>
                 <span style={styles.moduleBadge}>{currentLesson?.moduleTitle}</span>
-                <h1 style={styles.lessonTitle}>{currentLesson?.title}</h1>
+                <h1 className="lesson-title-text" style={styles.lessonTitle}>{currentLesson?.title}</h1>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <div style={styles.xpPill}>
                   <Sparkles size={14} color="#f59e0b" />
                   <span>+{currentLesson?.xp || 25} XP</span>
@@ -261,9 +484,9 @@ const CoursePlayer = () => {
             ) : (
               <div style={styles.videoPlaceholder}>
                 <div style={styles.placeholderIcon}>
-                  <Video size={48} color="rgba(255,255,255,0.7)" />
+                  <Video size={40} color="rgba(255,255,255,0.7)" />
                 </div>
-                <h3 style={{ color: 'white', marginTop: '1rem', fontWeight: '700' }}>{currentLesson?.title}</h3>
+                <h3 style={{ color: 'white', marginTop: '1rem', fontWeight: '700', fontSize: '1.1rem' }}>{currentLesson?.title}</h3>
                 <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem' }}>Follow the step-by-step training checklist below.</p>
               </div>
             )}
@@ -271,7 +494,7 @@ const CoursePlayer = () => {
 
           {/* Step-by-Step Training Checklist (Interactive Action Items) */}
           {currentLesson?.steps && currentLesson.steps.length > 0 && (
-            <div style={styles.sectionCard}>
+            <div className="section-card-box" style={styles.sectionCard}>
               <div style={styles.sectionHeader}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <CheckSquare size={20} color="var(--color-primary)" />
@@ -337,7 +560,7 @@ const CoursePlayer = () => {
 
           {/* Lesson Study Notes & Scripts */}
           {currentLesson?.description && (
-            <div style={styles.sectionCard}>
+            <div className="section-card-box" style={styles.sectionCard}>
               <div style={styles.sectionHeader}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <BookOpen size={20} color="var(--color-primary)" />
@@ -355,7 +578,7 @@ const CoursePlayer = () => {
 
           {/* Attached Resources & Downloads */}
           {currentLesson?.resources && currentLesson.resources.length > 0 && (
-            <div style={styles.sectionCard}>
+            <div className="section-card-box" style={styles.sectionCard}>
               <div style={styles.sectionHeader}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Download size={20} color="var(--color-primary)" />
@@ -363,7 +586,7 @@ const CoursePlayer = () => {
                 </div>
               </div>
 
-              <div style={styles.resourcesGrid}>
+              <div className="course-player-resources-grid">
                 {currentLesson.resources.map((res, rIdx) => (
                   <a
                     key={rIdx}
@@ -381,7 +604,7 @@ const CoursePlayer = () => {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={styles.resourceName}>{res.name}</div>
-                      <div style={styles.resourceSub}>{res.type ? res.type.toUpperCase() : 'DOCUMENT'} • Click to view</div>
+                      <div style={styles.resourceSub}>{res.type ? res.type.toUpperCase() : 'DOCUMENT'} • Tap to view</div>
                     </div>
                     <ExternalLink size={16} color="var(--color-text-muted)" />
                   </a>
@@ -391,24 +614,11 @@ const CoursePlayer = () => {
           )}
 
           {/* Navigation & Mark Complete Bottom Bar */}
-          <div style={styles.bottomNavCard}>
-            <button
-              onClick={() => prevLesson && handleSelectLesson(prevLesson.id)}
-              disabled={!prevLesson}
-              style={{
-                ...styles.navBtn,
-                opacity: prevLesson ? 1 : 0.4,
-                cursor: prevLesson ? 'pointer' : 'not-allowed'
-              }}
-            >
-              <ChevronLeft size={18} />
-              <span>Previous Lesson</span>
-            </button>
-
+          <div className="course-bottom-nav">
             <button
               onClick={handleToggleCompletion}
+              className="course-bottom-complete-btn"
               style={{
-                ...styles.completeBtn,
                 backgroundColor: isCurrentLessonCompleted ? '#ecfdf5' : 'var(--color-primary)',
                 color: isCurrentLessonCompleted ? 'var(--color-success)' : 'white',
                 borderColor: isCurrentLessonCompleted ? '#a7f3d0' : 'transparent'
@@ -427,28 +637,43 @@ const CoursePlayer = () => {
               )}
             </button>
 
-            <button
-              onClick={() => nextLesson && handleSelectLesson(nextLesson.id)}
-              disabled={!nextLesson}
-              style={{
-                ...styles.navBtn,
-                opacity: nextLesson ? 1 : 0.4,
-                cursor: nextLesson ? 'pointer' : 'not-allowed'
-              }}
-            >
-              <span>Next Lesson</span>
-              <ChevronRight size={18} />
-            </button>
+            <div className="course-bottom-nav-arrows">
+              <button
+                onClick={() => prevLesson && handleSelectLesson(prevLesson.id)}
+                disabled={!prevLesson}
+                style={{
+                  ...styles.navBtn,
+                  opacity: prevLesson ? 1 : 0.4,
+                  cursor: prevLesson ? 'pointer' : 'not-allowed'
+                }}
+              >
+                <ChevronLeft size={18} />
+                <span>Previous</span>
+              </button>
+
+              <button
+                onClick={() => nextLesson && handleSelectLesson(nextLesson.id)}
+                disabled={!nextLesson}
+                style={{
+                  ...styles.navBtn,
+                  opacity: nextLesson ? 1 : 0.4,
+                  cursor: nextLesson ? 'pointer' : 'not-allowed'
+                }}
+              >
+                <span>Next</span>
+                <ChevronRight size={18} />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Right: Course Curriculum Syllabus Sidebar */}
-        <div style={styles.sidebar}>
+        <div className={`course-player-sidebar ${mobileTab === 'lesson' ? 'mobile-hidden' : ''}`}>
           {/* Course Summary Widget */}
           <div style={styles.curriculumHeaderCard}>
             <h3 style={styles.curriculumCourseTitle}>{currentCourse.title}</h3>
             
-            <div style={{ marginTop: '1rem' }}>
+            <div style={{ marginTop: '0.875rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.4rem' }}>
                 <span style={{ color: 'var(--color-text-secondary)' }}>Course Progress</span>
                 <span style={{ color: 'var(--color-primary)' }}>{progressPercent}%</span>
@@ -550,11 +775,6 @@ const CoursePlayer = () => {
 };
 
 const styles = {
-  container: {
-    padding: '1.5rem 2rem',
-    maxWidth: '1440px',
-    margin: '0 auto',
-  },
   toast: {
     position: 'fixed',
     bottom: '24px',
@@ -572,43 +792,30 @@ const styles = {
     fontSize: '0.95rem',
     border: '1px solid rgba(255,255,255,0.1)'
   },
-  topBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '1.5rem',
-    paddingBottom: '1rem',
-    borderBottom: '1px solid var(--color-border)',
-    flexWrap: 'wrap',
-    gap: '1rem'
-  },
-  breadcrumbs: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    fontSize: '0.875rem',
-    flexWrap: 'wrap'
-  },
   backLink: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '0.35rem',
     color: 'var(--color-primary)',
     fontWeight: '700',
-    textDecoration: 'none'
+    textDecoration: 'none',
+    whiteSpace: 'nowrap'
   },
   breadcrumbCourse: {
     color: 'var(--color-text-secondary)',
-    fontWeight: '600'
+    fontWeight: '600',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '180px'
   },
   breadcrumbLesson: {
     color: 'var(--color-text-primary)',
-    fontWeight: '700'
-  },
-  topBarRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem'
+    fontWeight: '700',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '200px'
   },
   courseProgressPill: {
     display: 'flex',
@@ -623,7 +830,7 @@ const styles = {
     color: 'var(--color-text-secondary)'
   },
   miniProgressBg: {
-    width: '60px',
+    width: '50px',
     height: '6px',
     backgroundColor: '#e2e8f0',
     borderRadius: '999px',
@@ -635,25 +842,14 @@ const styles = {
     borderRadius: '999px',
     transition: 'width 0.3s ease'
   },
-  playerLayout: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 360px',
-    gap: '2rem',
-    alignItems: 'start'
-  },
-  mainContent: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.5rem'
-  },
   lessonHeaderCard: {
     backgroundColor: 'white',
-    padding: '1.5rem',
+    padding: '1.25rem 1.5rem',
     borderRadius: '12px',
     border: '1px solid var(--color-border)'
   },
   moduleBadge: {
-    fontSize: '0.75rem',
+    fontSize: '0.725rem',
     fontWeight: '700',
     color: 'var(--color-primary)',
     textTransform: 'uppercase',
@@ -662,7 +858,7 @@ const styles = {
     marginBottom: '0.25rem'
   },
   lessonTitle: {
-    fontSize: '1.5rem',
+    fontSize: '1.4rem',
     fontWeight: '800',
     color: 'var(--color-text-primary)',
     lineHeight: '1.3'
@@ -673,10 +869,11 @@ const styles = {
     gap: '0.35rem',
     backgroundColor: '#fef3c7',
     color: '#b45309',
-    padding: '0.35rem 0.75rem',
+    padding: '0.35rem 0.65rem',
     borderRadius: '999px',
     fontWeight: '800',
-    fontSize: '0.8rem'
+    fontSize: '0.8rem',
+    whiteSpace: 'nowrap'
   },
   completedTag: {
     display: 'flex',
@@ -684,22 +881,25 @@ const styles = {
     gap: '0.35rem',
     backgroundColor: '#ecfdf5',
     color: 'var(--color-success)',
-    padding: '0.35rem 0.75rem',
+    padding: '0.35rem 0.65rem',
     borderRadius: '999px',
     fontWeight: '700',
-    fontSize: '0.8rem'
+    fontSize: '0.8rem',
+    whiteSpace: 'nowrap'
   },
   videoCard: {
     backgroundColor: '#0f172a',
     borderRadius: '12px',
     overflow: 'hidden',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.1)'
+    boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+    width: '100%'
   },
   videoResponsiveWrapper: {
     position: 'relative',
     paddingBottom: '56.25%', /* 16:9 Aspect Ratio */
     height: 0,
-    overflow: 'hidden'
+    overflow: 'hidden',
+    width: '100%'
   },
   iframe: {
     position: 'absolute',
@@ -710,7 +910,7 @@ const styles = {
     border: 0
   },
   videoPlaceholder: {
-    padding: '5rem 2rem',
+    padding: '4rem 1.5rem',
     textAlign: 'center',
     display: 'flex',
     flexDirection: 'column',
@@ -718,8 +918,8 @@ const styles = {
     justifyContent: 'center'
   },
   placeholderIcon: {
-    width: '80px',
-    height: '80px',
+    width: '64px',
+    height: '64px',
     borderRadius: '50%',
     backgroundColor: 'rgba(255,255,255,0.1)',
     display: 'flex',
@@ -728,18 +928,18 @@ const styles = {
   },
   sectionCard: {
     backgroundColor: 'white',
-    padding: '1.5rem',
+    padding: '1.25rem 1.5rem',
     borderRadius: '12px',
     border: '1px solid var(--color-border)'
   },
   sectionHeader: {
-    marginBottom: '1.25rem',
+    marginBottom: '1rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '0.25rem'
   },
   sectionTitle: {
-    fontSize: '1.1rem',
+    fontSize: '1.05rem',
     fontWeight: '700',
     color: 'var(--color-text-primary)'
   },
@@ -750,8 +950,8 @@ const styles = {
   },
   stepItem: {
     display: 'flex',
-    gap: '1rem',
-    padding: '1rem',
+    gap: '0.875rem',
+    padding: '0.875rem 1rem',
     borderRadius: '8px',
     border: '1px solid',
     alignItems: 'flex-start',
@@ -761,20 +961,22 @@ const styles = {
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    padding: 0,
-    marginTop: '2px',
+    padding: '2px',
+    minWidth: '26px',
+    minHeight: '26px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center'
   },
   stepContent: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   stepTitleRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: '1rem',
+    gap: '0.75rem',
     marginBottom: '0.35rem',
     flexWrap: 'wrap'
   },
@@ -789,7 +991,8 @@ const styles = {
     borderRadius: '4px',
     fontSize: '0.75rem',
     fontWeight: '700',
-    textDecoration: 'none'
+    textDecoration: 'none',
+    whiteSpace: 'nowrap'
   },
   stepInstruction: {
     fontSize: '0.875rem',
@@ -799,20 +1002,15 @@ const styles = {
   },
   studyNotesContent: {
     backgroundColor: '#f8fafc',
-    padding: '1.25rem',
+    padding: '1rem 1.25rem',
     borderRadius: '8px',
     border: '1px solid #e2e8f0'
-  },
-  resourcesGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: '1rem'
   },
   resourceCard: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.75rem',
-    padding: '0.875rem 1rem',
+    padding: '0.75rem 1rem',
     borderRadius: '8px',
     backgroundColor: '#f8fafc',
     border: '1px solid #e2e8f0',
@@ -827,7 +1025,8 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+    flexShrink: 0
   },
   resourceName: {
     fontSize: '0.875rem',
@@ -842,48 +1041,17 @@ const styles = {
     color: 'var(--color-text-muted)',
     fontWeight: '600'
   },
-  bottomNavCard: {
-    backgroundColor: 'white',
-    padding: '1.25rem 1.5rem',
-    borderRadius: '12px',
-    border: '1px solid var(--color-border)',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '1rem',
-    flexWrap: 'wrap'
-  },
   navBtn: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: '0.35rem',
     backgroundColor: 'white',
     border: '1px solid var(--color-border)',
     color: 'var(--color-text-primary)',
-    padding: '0.65rem 1rem',
+    padding: '0.65rem 0.875rem',
     borderRadius: '8px',
-    fontSize: '0.875rem',
+    fontSize: '0.85rem',
     fontWeight: '600'
-  },
-  completeBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    padding: '0.75rem 1.5rem',
-    borderRadius: '8px',
-    border: '1px solid',
-    fontSize: '0.95rem',
-    fontWeight: '800',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-  },
-  sidebar: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-    position: 'sticky',
-    top: '1rem'
   },
   curriculumHeaderCard: {
     backgroundColor: 'white',
@@ -964,7 +1132,8 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '18px'
+    width: '18px',
+    flexShrink: 0
   },
   lessonRowTitle: {
     fontSize: '0.825rem',
@@ -982,3 +1151,4 @@ const styles = {
 };
 
 export default CoursePlayer;
+
