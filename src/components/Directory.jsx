@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAgent } from '../context/AgentContext';
-import { Mail, Phone, Download, Search, User, MapPin, Award, Globe, Smartphone } from 'lucide-react';
+import { Mail, Phone, Download, Search, User, MapPin, Globe, Smartphone, Heart, Sparkles } from 'lucide-react';
+import LevelBadge from './Gamification/LevelBadge';
 
 const Directory = () => {
-  const { agents } = useAgent();
+  const { agents, gamificationSettings } = useAgent();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Filter out any invalid agents and apply search filter
@@ -21,19 +22,18 @@ const Directory = () => {
 
   // Function to generate and download a vCard (.vcf)
   const downloadVCard = (agent) => {
-    // Construct the vCard data
     const nameStr = agent.name || 'Unknown Agent';
     const nameParts = nameStr.split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
     
-    const emailStr = agent.id || ''; // The id is typically their email
+    const emailStr = agent.id || '';
     const phoneStr = agent.profile?.phone || '';
     const altPhoneStr = agent.profile?.altPhone || '';
     const addressStr = agent.profile?.address || '';
-    const websiteStr = agent.profile?.website || '';
     const licenseStr = agent.profile?.licenseNumber || '';
-    
+    const websiteStr = agent.profile?.website || '';
+
     const vcard = [
       'BEGIN:VCARD',
       'VERSION:3.0',
@@ -49,7 +49,6 @@ const Directory = () => {
       'END:VCARD'
     ].filter(Boolean).join('\n');
 
-    // Create blob and trigger download
     const blob = new Blob([vcard], { type: 'text/vcard;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -88,7 +87,14 @@ const Directory = () => {
                 {agent.name ? agent.name.charAt(0).toUpperCase() : <User size={24} />}
               </div>
               <div style={styles.nameContainer}>
-                <h3 style={styles.name}>{agent.name || 'No Name Provided'}</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <h3 style={styles.name}>{agent.name || 'No Name Provided'}</h3>
+                  <LevelBadge 
+                    xp={agent.xp || 0} 
+                    thresholds={gamificationSettings?.levelThresholds} 
+                    size="xs" 
+                  />
+                </div>
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
                   <span style={styles.roleBadge}>
                     {agent.role === 'admin' ? 'Admin' : 'Agent'}
@@ -139,161 +145,222 @@ const Directory = () => {
                 <div style={styles.infoRow}>
                   <Globe size={15} color="var(--color-primary)" />
                   <a href={agent.profile.website.startsWith('http') ? agent.profile.website : `https://${agent.profile.website}`} target="_blank" rel="noopener noreferrer" style={styles.link}>
-                    {agent.profile.website.replace(/^https?:\/\//, '')}
+                    Website
                   </a>
+                </div>
+              )}
+
+              {/* Social / Extra Profile Info */}
+              {(agent.profile?.instagram || agent.profile?.linkedin || agent.profile?.facebook) && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  {agent.profile.instagram && (
+                    <a href={agent.profile.instagram.startsWith('http') ? agent.profile.instagram : `https://instagram.com/${agent.profile.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" style={styles.socialLink}>
+                      Instagram
+                    </a>
+                  )}
+                  {agent.profile.linkedin && (
+                    <a href={agent.profile.linkedin.startsWith('http') ? agent.profile.linkedin : `https://${agent.profile.linkedin}`} target="_blank" rel="noopener noreferrer" style={styles.socialLink}>
+                      LinkedIn
+                    </a>
+                  )}
+                  {agent.profile.facebook && (
+                    <a href={agent.profile.facebook.startsWith('http') ? agent.profile.facebook : `https://${agent.profile.facebook}`} target="_blank" rel="noopener noreferrer" style={styles.socialLink}>
+                      Facebook
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Bio / Interests & Goals */}
+              {(agent.profile?.interests || agent.profile?.goals) && (
+                <div style={styles.bioContainer}>
+                  {agent.profile?.interests && (
+                    <div style={styles.bioSnippet}>
+                      <Heart size={12} color="var(--color-accent)" />
+                      <span><strong>Interests:</strong> {agent.profile.interests}</span>
+                    </div>
+                  )}
+                  {agent.profile?.goals && (
+                    <div style={styles.bioSnippet}>
+                      <Sparkles size={12} color="var(--color-primary)" />
+                      <span><strong>Goals:</strong> {agent.profile.goals}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             <button 
-              className="btn-primary" 
-              style={styles.downloadBtn}
-              onClick={() => downloadVCard(agent)}
+              onClick={() => downloadVCard(agent)} 
+              className="btn-secondary"
+              style={styles.vcardButton}
             >
-              <Download size={16} /> Save Contact (.vcf)
+              <Download size={15} /> Save Contact (.vcf)
             </button>
           </div>
         ))}
-        
-        {filteredAgents.length === 0 && (
-          <div style={styles.emptyState}>
-            <User size={48} color="var(--color-border)" />
-            <p style={{ marginTop: '1rem', color: 'var(--color-text-muted)' }}>
-              No agents found matching your search.
-            </p>
-          </div>
-        )}
       </div>
+
+      {filteredAgents.length === 0 && (
+        <div style={styles.emptyState}>
+          <p>No agents found matching your search.</p>
+        </div>
+      )}
     </div>
   );
 };
 
 const styles = {
   container: {
-    height: '100%',
     display: 'flex',
     flexDirection: 'column',
-    paddingBottom: '2rem'
+    gap: '1.5rem',
+    paddingBottom: '80px',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '2rem',
+    alignItems: 'center',
     flexWrap: 'wrap',
-    gap: '1.5rem'
+    gap: '1rem',
   },
   searchContainer: {
     position: 'relative',
-    width: '100%',
-    maxWidth: '350px'
+    minWidth: '280px',
   },
   searchIcon: {
     position: 'absolute',
-    left: '1rem',
+    left: '12px',
     top: '50%',
     transform: 'translateY(-50%)',
-    color: 'var(--color-text-muted)'
+    color: 'var(--color-text-muted)',
   },
   searchInput: {
     width: '100%',
-    padding: '0.75rem 1rem 0.75rem 3rem',
-    borderRadius: '50px',
+    padding: '0.6rem 1rem 0.6rem 2.4rem',
+    borderRadius: '20px',
     border: '1px solid var(--color-border)',
+    fontSize: '0.9rem',
     outline: 'none',
-    fontSize: '0.95rem',
-    boxShadow: 'var(--shadow-sm)',
-    transition: 'all 0.2s'
+    backgroundColor: 'var(--color-card-bg)',
   },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-    gap: '1.5rem',
+    gap: '1.25rem',
   },
   card: {
     display: 'flex',
     flexDirection: 'column',
-    padding: '1.5rem',
+    justifyContent: 'space-between',
+    padding: '1.25rem',
+    borderRadius: '12px',
+    border: '1px solid var(--color-border)',
+    backgroundColor: 'var(--color-card-bg)',
+    gap: '1rem',
   },
   cardHeader: {
     display: 'flex',
     alignItems: 'center',
     gap: '1rem',
-    marginBottom: '1.5rem'
   },
   avatar: {
-    width: '50px',
-    height: '50px',
+    width: '44px',
+    height: '44px',
     borderRadius: '50%',
     backgroundColor: 'var(--color-primary)',
     color: 'white',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '1.5rem',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    fontSize: '1.1rem',
+    flexShrink: 0,
   },
   nameContainer: {
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: '0.25rem'
+    overflow: 'hidden',
   },
   name: {
-    margin: 0,
-    fontSize: '1.1rem',
+    fontSize: '1.05rem',
     fontWeight: '600',
-    color: 'var(--color-dark-navy)'
+    margin: 0,
+    color: 'var(--color-dark-navy)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   roleBadge: {
     fontSize: '0.7rem',
     padding: '0.15rem 0.5rem',
-    borderRadius: '50px',
+    borderRadius: '12px',
     backgroundColor: 'var(--color-frosted-blue)',
-    color: 'var(--color-slate-blue)',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px'
+    color: 'var(--color-dark-navy)',
+    fontWeight: '500',
   },
   contactInfo: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.75rem',
-    marginBottom: '1.5rem',
-    flexGrow: 1
+    gap: '0.5rem',
   },
   infoRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.75rem'
+    gap: '0.6rem',
+    fontSize: '0.85rem',
+    overflow: 'hidden',
   },
   link: {
     color: 'var(--color-text-main)',
     textDecoration: 'none',
-    fontSize: '0.95rem',
-    wordBreak: 'break-all'
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   noData: {
     color: 'var(--color-text-muted)',
-    fontSize: '0.95rem',
-    fontStyle: 'italic'
+    fontStyle: 'italic',
   },
-  downloadBtn: {
-    width: '100%',
-    display: 'flex',
-    justifyContent: 'center',
-    marginTop: 'auto'
+  socialLink: {
+    fontSize: '0.75rem',
+    color: 'var(--color-primary)',
+    backgroundColor: 'rgba(0, 161, 224, 0.08)',
+    padding: '0.15rem 0.45rem',
+    borderRadius: '4px',
+    textDecoration: 'none',
+    fontWeight: '500'
   },
-  emptyState: {
-    gridColumn: '1 / -1',
+  bioContainer: {
+    marginTop: '0.4rem',
+    paddingTop: '0.4rem',
+    borderTop: '1px solid var(--color-border)',
     display: 'flex',
     flexDirection: 'column',
+    gap: '0.3rem',
+  },
+  bioSnippet: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '0.4rem',
+    fontSize: '0.78rem',
+    color: 'var(--color-text-main)',
+    lineHeight: 1.3
+  },
+  vcardButton: {
+    width: '100%',
+    display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '4rem',
-    backgroundColor: 'var(--color-white)',
-    borderRadius: 'var(--border-radius-lg)',
-    border: '1px dashed var(--color-border)'
+    gap: '0.5rem',
+    padding: '0.5rem',
+    fontSize: '0.85rem',
+    marginTop: '0.25rem',
+  },
+  emptyState: {
+    textAlign: 'center',
+    padding: '3rem',
+    color: 'var(--color-text-muted)',
   }
 };
 

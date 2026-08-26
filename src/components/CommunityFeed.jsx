@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
+import { useAgent } from '../context/AgentContext';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MessageSquare, Calendar, Video, Plus, X, Send, FileText, Search, Tag, Edit2, Trash2 } from 'lucide-react';
+import { Heart, MessageSquare, Calendar, Video, Plus, X, Send, FileText, Search, Tag, Edit2, Trash2, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import LevelBadge from './Gamification/LevelBadge';
+import Leaderboard from './Gamification/Leaderboard';
 
 const CommunityFeed = () => {
   const { posts, events, addPost, updatePost, deletePost, toggleLike, addEvent, chats, sendMessage } = useCommunity();
   const { currentUser } = useAuth();
+  const { agents, gamificationSettings } = useAgent();
   const navigate = useNavigate();
   const isAdmin = currentUser?.role === 'admin';
 
@@ -135,7 +139,12 @@ const CommunityFeed = () => {
 
           <div style={styles.postsList}>
             {filteredPosts.map(post => {
-              const hasLiked = post.likes.includes(currentUser?.id);
+              const hasLiked = (post.likes || []).includes(currentUser?.id || currentUser?.email);
+              const authorAgent = agents.find(a => 
+                (post.authorId && a.id?.toLowerCase() === post.authorId?.toLowerCase()) ||
+                (post.authorName && a.name?.toLowerCase() === post.authorName?.toLowerCase())
+              );
+
               return (
                 <div key={post.id} className="card" style={styles.postCard}>
                   {/* Post Header */}
@@ -145,8 +154,16 @@ const CommunityFeed = () => {
                         {post.authorName.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <div style={styles.authorName}>
-                          {post.authorName} <span style={styles.authorRoleBadge}>{post.authorRole}</span>
+                        <div style={{ ...styles.authorName, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span>{post.authorName}</span>
+                          <span style={styles.authorRoleBadge}>{post.authorRole}</span>
+                          {authorAgent && (
+                            <LevelBadge 
+                              xp={authorAgent.xp || 0} 
+                              thresholds={gamificationSettings?.levelThresholds} 
+                              size="xs" 
+                            />
+                          )}
                         </div>
                         <div style={styles.postDate}>{formatDate(post.timestamp)}</div>
                       </div>
@@ -300,10 +317,14 @@ const CommunityFeed = () => {
                     <div style={styles.postActions}>
                       <button 
                         onClick={() => toggleLike(post.id)} 
+                        title={hasLiked ? "Unlike (removes 1 XP from author)" : "Like this post (+1 XP to author)"}
                         style={{...styles.actionBtn, color: hasLiked ? 'var(--color-primary)' : 'var(--color-moss-grey)'}}
                       >
                         <Heart size={18} fill={hasLiked ? 'var(--color-primary)' : 'none'} />
-                        {post.likes.length > 0 ? post.likes.length : 'Like'}
+                        <span>{post.likes.length > 0 ? post.likes.length : 'Like'}</span>
+                        <span style={{ fontSize: '0.72rem', opacity: 0.8, backgroundColor: 'rgba(0, 161, 224, 0.08)', padding: '1px 5px', borderRadius: '10px' }}>
+                          +1 XP
+                        </span>
                       </button>
                       
                       {!isAdmin && (
@@ -323,8 +344,11 @@ const CommunityFeed = () => {
           </div>
         </div>
 
-        {/* Right Sidebar - Calendar */}
+        {/* Right Sidebar - Leaderboard & Calendar */}
         <div style={styles.sidebarColumn}>
+          {/* Skool-Style Leaderboard */}
+          <Leaderboard />
+
           <div className="card" style={styles.calendarCard}>
             <div style={styles.calendarHeader}>
               <h3 style={{margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-dark-navy)'}}>

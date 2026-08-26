@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -11,10 +11,24 @@ import { supabase } from '../lib/supabase';
 import ErrorBoundary from './ErrorBoundary';
 import PlaybookManager from './PlaybookManager';
 import AgentAutocomplete from './AgentAutocomplete';
+import LevelBadge from './Gamification/LevelBadge';
+import { DEFAULT_LEVEL_THRESHOLDS, DEFAULT_PHASE_UNLOCK_LEVELS } from '../utils/gamification';
 
 const AdminDashboard = () => {
   const { currentUser, emulateUser, resetPasswordForEmail } = useAuth();
-  const { agents, addAgent, getRank, adminSettings, updateAgentStatus, adminUpdateAgent, deleteAgent, currentAgentData } = useAgent();
+  const { 
+    agents, 
+    addAgent, 
+    getRank, 
+    adminSettings, 
+    updateAgentStatus, 
+    adminUpdateAgent, 
+    deleteAgent, 
+    currentAgentData,
+    awardAgentXp,
+    gamificationSettings,
+    updateGamificationSettings
+  } = useAgent();
   const { events, posts, addPost, updatePost, deletePost, addEvent, updateEvent, deleteEvent, approveEvent, rejectEvent, chats, sendMessage } = useCommunity();
   const userName = currentAgentData?.name || currentUser?.name || currentUser?.email || 'Admin';
   
@@ -108,6 +122,52 @@ const AdminDashboard = () => {
     setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
     setTimeout(() => setActionSuccessMsg(''), 4000);
   };
+
+  // Award XP State
+  const [awardingAgent, setAwardingAgent] = useState(null);
+  const [awardXpAmount, setAwardXpAmount] = useState(50);
+  const [awardXpCustom, setAwardXpCustom] = useState('');
+  const [awardXpReason, setAwardXpReason] = useState('Hosting Team Open House');
+
+  const handleAwardXpSubmit = async (e) => {
+    e.preventDefault();
+    if (!awardingAgent) return;
+    const finalAmount = awardXpCustom !== '' ? Number(awardXpCustom) : Number(awardXpAmount);
+    if (isNaN(finalAmount) || finalAmount === 0) {
+      alert('Please enter a valid non-zero XP amount.');
+      return;
+    }
+    await awardAgentXp(awardingAgent.id, finalAmount, awardXpReason || 'Admin XP Award');
+    setActionSuccessMsg(`Awarded ${finalAmount > 0 ? '+' : ''}${finalAmount} XP to ${awardingAgent.name || awardingAgent.id}!`);
+    setTimeout(() => setActionSuccessMsg(''), 4000);
+    setAwardingAgent(null);
+    setAwardXpCustom('');
+  };
+
+  // Gamification Settings State
+  const [editableLevels, setEditableLevels] = useState(gamificationSettings?.levelThresholds || DEFAULT_LEVEL_THRESHOLDS);
+  const [editablePhaseUnlocks, setEditablePhaseUnlocks] = useState(gamificationSettings?.phaseUnlockLevels || DEFAULT_PHASE_UNLOCK_LEVELS);
+  const [gamificationSavedMsg, setGamificationSavedMsg] = useState('');
+
+  React.useEffect(() => {
+    if (gamificationSettings?.levelThresholds) {
+      setEditableLevels(gamificationSettings.levelThresholds);
+    }
+    if (gamificationSettings?.phaseUnlockLevels) {
+      setEditablePhaseUnlocks(gamificationSettings.phaseUnlockLevels);
+    }
+  }, [gamificationSettings]);
+
+  const handleSaveGamification = async (e) => {
+    e.preventDefault();
+    await updateGamificationSettings({
+      levelThresholds: editableLevels,
+      phaseUnlockLevels: editablePhaseUnlocks
+    });
+    setGamificationSavedMsg('Gamification settings saved successfully!');
+    setTimeout(() => setGamificationSavedMsg(''), 4000);
+  };
+
   const [newAgentEmail, setNewAgentEmail] = useState('');
   const [newAgentName, setNewAgentName] = useState('');
   const [newUserRole, setNewUserRole] = useState('agent');
@@ -568,11 +628,16 @@ const AdminDashboard = () => {
                         {expandedAgentGroups[groupKey] && groupAgents.map(a => (
                           <tr key={a.id} style={styles.roleTr}>
                             <td style={styles.roleTd}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem'}}>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap'}}>
                                 <div style={{width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold'}}>
                                   {(a.name || '?').charAt(0)}
                                 </div>
-                                {a.name || 'Unknown Agent'}
+                                <span style={{ fontWeight: '500', color: 'var(--color-dark-navy)' }}>{a.name || 'Unknown Agent'}</span>
+                                <LevelBadge 
+                                  xp={a.xp || 0} 
+                                  thresholds={gamificationSettings?.levelThresholds} 
+                                  size="xs" 
+                                />
                               </div>
                             </td>
                             <td style={styles.roleTd}>{a.id}</td>
@@ -588,9 +653,27 @@ const AdminDashboard = () => {
                                 <option value="team_agent">Team Agent</option>
                               </select>
                             </td>
-                            <td style={styles.roleTd}>{a.xp || 0}</td>
                             <td style={styles.roleTd}>
-                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.08)', padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' }}>
+                                <Star size={12} fill="var(--color-primary)" /> {a.xp || 0} XP
+                              </span>
+                            </td>
+                            <td style={styles.roleTd}>
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAwardingAgent(a);
+                                    setAwardXpAmount(50);
+                                    setAwardXpCustom('');
+                                    setAwardXpReason('Hosting Team Open House');
+                                  }}
+                                  className="btn-secondary"
+                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', color: 'var(--color-primary)', borderColor: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.05)' }}
+                                  title="Award custom XP to this agent"
+                                >
+                                  <Award size={14} /> Award XP
+                                </button>
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -604,14 +687,14 @@ const AdminDashboard = () => {
                                     setEditAgentEmergencyPhone(a.profile?.emergencyPhone || '');
                                   }}
                                   className="btn-secondary"
-                                  style={{ padding: '0.4rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
+                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
                                 >
                                   <Edit2 size={14} /> Edit
                                 </button>
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); emulateUser(a); }}
                                   className="btn-secondary"
-                                  style={{ padding: '0.4rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
+                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
                                 >
                                   <LogIn size={14} /> Log In As
                                 </button>
@@ -629,7 +712,7 @@ const AdminDashboard = () => {
                                     }
                                   }}
                                   className="btn-secondary"
-                                  style={{ padding: '0.4rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
+                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
                                   title="Send Password Reset Email"
                                 >
                                   <KeyRound size={14} /> Reset Pass
@@ -642,7 +725,7 @@ const AdminDashboard = () => {
                                     }
                                   }}
                                   className="btn-secondary"
-                                  style={{ padding: '0.4rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
                                 >
                                   <Trash2 size={14} /> Delete
                                 </button>
@@ -775,6 +858,86 @@ const AdminDashboard = () => {
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.75rem' }}>
                       <button type="button" className="btn-secondary" onClick={() => setEditingAgent(null)}>Cancel</button>
                       <button type="submit" className="btn-primary">Save Changes</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Award XP Modal */}
+            {awardingAgent && (
+              <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000,
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <div className="card" style={{ width: '90%', maxWidth: '480px', backgroundColor: 'var(--color-white)', position: 'relative' }}>
+                  <button 
+                    onClick={() => setAwardingAgent(null)}
+                    style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    <X size={20} color="var(--color-text-muted)" />
+                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <Award size={22} color="var(--color-primary)" />
+                    <h2 style={{ margin: 0, color: 'var(--color-dark-navy)' }}>Award Agent XP</h2>
+                  </div>
+                  <p className="text-xs text-muted mb-4">Grant engagement, milestone, or achievement XP to <strong>{awardingAgent.name || awardingAgent.id}</strong>.</p>
+                  
+                  <form onSubmit={handleAwardXpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                      <label style={styles.label}>Select Preset Amount</label>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {[10, 25, 50, 100, 250, 500].map(amt => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => { setAwardXpAmount(amt); setAwardXpCustom(''); }}
+                            style={{
+                              padding: '0.4rem 0.75rem',
+                              borderRadius: '8px',
+                              border: '1px solid var(--color-border)',
+                              backgroundColor: (awardXpCustom === '' && awardXpAmount === amt) ? 'var(--color-primary)' : 'var(--color-background)',
+                              color: (awardXpCustom === '' && awardXpAmount === amt) ? 'white' : 'var(--color-dark-navy)',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem'
+                            }}
+                          >
+                            +{amt} XP
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={styles.label}>Or Custom Amount (+ / -)</label>
+                      <input 
+                        type="number" 
+                        placeholder="e.g. 75, 150, -20" 
+                        value={awardXpCustom} 
+                        onChange={(e) => setAwardXpCustom(e.target.value)} 
+                        style={styles.input} 
+                      />
+                    </div>
+
+                    <div>
+                      <label style={styles.label}>Reason / Note</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. Hosting Open House, Live Training, Closed Listing" 
+                        value={awardXpReason} 
+                        onChange={(e) => setAwardXpReason(e.target.value)} 
+                        style={styles.input} 
+                        required 
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <button type="button" onClick={() => setAwardingAgent(null)} className="btn-secondary">Cancel</button>
+                      <button type="submit" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <Sparkles size={16} /> Award {awardXpCustom !== '' ? awardXpCustom : `+${awardXpAmount}`} XP
+                      </button>
                     </div>
                   </form>
                 </div>
@@ -1175,6 +1338,130 @@ const AdminDashboard = () => {
                 )}
                 <button type="submit" className="btn-primary" disabled={!newEventTitle.trim()}>
                   {editingEventId ? 'Update Event' : 'Schedule Event'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Gamification & Progression Settings Section */}
+          <div className="card" style={{ gridColumn: '1 / -1', borderTop: '3px solid var(--color-primary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div>
+                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-dark-navy)' }}>
+                  <Trophy size={20} color="var(--color-accent)" /> Gamification & Progressive Level Settings
+                </h2>
+                <p className="text-xs text-muted mt-1 mb-0">
+                  Configure XP thresholds for all 9 progressive levels and set minimum unlock levels for Playbook phases.
+                </p>
+              </div>
+              {gamificationSavedMsg && (
+                <div style={{ padding: '0.4rem 0.8rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#059669', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600' }}>
+                  ✓ {gamificationSavedMsg}
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveGamification} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                
+                {/* 9 Level Thresholds Configuration */}
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '1rem', backgroundColor: 'var(--color-background)' }}>
+                  <h3 style={{ margin: 0, marginBottom: '0.75rem', fontSize: '0.95rem', color: 'var(--color-dark-navy)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Sparkles size={16} color="var(--color-primary)" /> Level Thresholds (1 - 9)
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '380px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                    {editableLevels.map((lvl, idx) => (
+                      <div key={lvl.level} style={{ display: 'grid', gridTemplateColumns: '50px 1fr 100px', gap: '0.5rem', alignItems: 'center', backgroundColor: 'var(--color-card-bg)', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid var(--color-border)' }}>
+                        <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--color-dark-navy)' }}>
+                          Lv. {lvl.level}
+                        </span>
+                        <input 
+                          type="text" 
+                          value={lvl.title} 
+                          onChange={(e) => {
+                            const newLvls = [...editableLevels];
+                            newLvls[idx] = { ...newLvls[idx], title: e.target.value };
+                            setEditableLevels(newLvls);
+                          }}
+                          style={{ ...styles.input, padding: '0.3rem 0.5rem', fontSize: '0.82rem' }}
+                          placeholder="Level Title"
+                          required
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                          <input 
+                            type="number" 
+                            value={lvl.minXp} 
+                            onChange={(e) => {
+                              const newLvls = [...editableLevels];
+                              newLvls[idx] = { ...newLvls[idx], minXp: Number(e.target.value) };
+                              setEditableLevels(newLvls);
+                            }}
+                            style={{ ...styles.input, padding: '0.3rem 0.5rem', fontSize: '0.82rem', textAlign: 'right' }}
+                            placeholder="Min XP"
+                            disabled={lvl.level === 1}
+                            required
+                          />
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>XP</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Phase Gating Levels Configuration */}
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '1rem', backgroundColor: 'var(--color-background)' }}>
+                  <h3 style={{ margin: 0, marginBottom: '0.75rem', fontSize: '0.95rem', color: 'var(--color-dark-navy)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Lock size={16} color="var(--color-accent)" /> Playbook Phase Gating
+                  </h3>
+                  <p className="text-xs text-muted mb-3">Specify which minimum level an agent must reach to unlock each phase badge and content.</p>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    {[
+                      { id: 'apply', label: 'Phase 1: Apply (Application & ICA)' },
+                      { id: 'process', label: 'Phase 2: Process (License & Setup)' },
+                      { id: 'activate', label: 'Phase 3: Activate (TREC & Systems)' },
+                      { id: 'launch', label: 'Phase 4: Launch (Board & Readiness)' },
+                      { id: 'zillow', label: 'Phase 5: Enrolled (Zillow & Production)' },
+                    ].map(p => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--color-card-bg)', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--color-border)' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--color-dark-navy)' }}>{p.label}</span>
+                        <select 
+                          value={editablePhaseUnlocks[p.id] || 1}
+                          onChange={(e) => {
+                            setEditablePhaseUnlocks({
+                              ...editablePhaseUnlocks,
+                              [p.id]: Number(e.target.value)
+                            });
+                          }}
+                          style={{ ...styles.roleSelect, padding: '0.3rem 0.6rem', fontSize: '0.85rem' }}
+                        >
+                          {editableLevels.map(lvl => (
+                            <option key={lvl.level} value={lvl.level}>
+                              Level {lvl.level}: {lvl.title} ({lvl.minXp} XP)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setEditableLevels(DEFAULT_LEVEL_THRESHOLDS);
+                    setEditablePhaseUnlocks(DEFAULT_PHASE_UNLOCK_LEVELS);
+                  }} 
+                  className="btn-secondary"
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Reset Defaults
+                </button>
+                <button type="submit" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Check size={16} /> Save Gamification Settings
                 </button>
               </div>
             </form>

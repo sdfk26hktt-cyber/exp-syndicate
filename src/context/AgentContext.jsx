@@ -1,6 +1,12 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
+import { 
+  DEFAULT_LEVEL_THRESHOLDS, 
+  DEFAULT_PHASE_UNLOCK_LEVELS, 
+  getLevelInfo, 
+  getPhaseUnlockStatus 
+} from '../utils/gamification';
 
 const AgentContext = createContext();
 
@@ -192,16 +198,31 @@ export const AgentProvider = ({ children }) => {
   const [globalPlaybooks, setGlobalPlaybooks] = useState(DEFAULT_PHASES);
   const [phases, setPhases] = useState(DEFAULT_PHASES);
   const [xp, setXp] = useState(0);
+  const [xpEvents, setXpEvents] = useState([]);
   
   const [adminSettings, setAdminSettings] = useState({
     defaultSponsor: { name: 'Brian Burds', phone: '(915) 256-6989', email: 'brian@brianburds.com' }
   });
 
+  const [gamificationSettings, setGamificationSettings] = useState({
+    levelThresholds: DEFAULT_LEVEL_THRESHOLDS,
+    phaseUnlockLevels: DEFAULT_PHASE_UNLOCK_LEVELS
+  });
+
   const defaultProfile = {
     phone: '',
+    altPhone: '',
     address: '',
     birthday: '',
     licenseNumber: '',
+    website: '',
+    instagram: '',
+    linkedin: '',
+    facebook: '',
+    preferredContact: 'Phone Call',
+    emergencyName: '',
+    emergencyPhone: '',
+    emergencyRelation: '',
     interests: '',
     goals: ''
   };
@@ -215,6 +236,71 @@ export const AgentProvider = ({ children }) => {
     return [];
   };
 
+  const loadGamificationSettings = async () => {
+    try {
+      const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'gamification_settings').single();
+      if (!error && data?.data) {
+        const loaded = {
+          levelThresholds: data.data.levelThresholds || DEFAULT_LEVEL_THRESHOLDS,
+          phaseUnlockLevels: data.data.phaseUnlockLevels || DEFAULT_PHASE_UNLOCK_LEVELS
+        };
+        setGamificationSettings(loaded);
+        localStorage.setItem('mockGamificationSettings', JSON.stringify(loaded));
+        return loaded;
+      } else if (error && error.code === 'PGRST116') {
+        const defaultSettings = {
+          levelThresholds: DEFAULT_LEVEL_THRESHOLDS,
+          phaseUnlockLevels: DEFAULT_PHASE_UNLOCK_LEVELS
+        };
+        await supabase.from('global_settings').insert([{ id: 'gamification_settings', data: defaultSettings }]);
+        setGamificationSettings(defaultSettings);
+        return defaultSettings;
+      }
+    } catch (e) {
+      console.error('Failed to load gamification settings:', e);
+    }
+    
+    // Fallback to localStorage
+    const saved = localStorage.getItem('mockGamificationSettings');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setGamificationSettings(parsed);
+        return parsed;
+      } catch (err) {
+        console.error('Error parsing mockGamificationSettings:', err);
+      }
+    }
+    return {
+      levelThresholds: DEFAULT_LEVEL_THRESHOLDS,
+      phaseUnlockLevels: DEFAULT_PHASE_UNLOCK_LEVELS
+    };
+  };
+
+  const loadXpEvents = async () => {
+    try {
+      const { data, error } = await supabase.from('xp_events').select('*').order('created_at', { ascending: false });
+      if (!error && data) {
+        setXpEvents(data);
+        localStorage.setItem('mockXpEvents', JSON.stringify(data));
+        return data;
+      }
+    } catch (err) {
+      console.log('xp_events table not found or error, using local fallback:', err);
+    }
+    const saved = localStorage.getItem('mockXpEvents');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setXpEvents(parsed);
+        return parsed;
+      } catch (err) {
+        console.error('Error parsing mockXpEvents:', err);
+      }
+    }
+    return [];
+  };
+
   const loadGlobalPlaybooks = async () => {
     try {
       const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'global_playbook').single();
@@ -222,7 +308,6 @@ export const AgentProvider = ({ children }) => {
         setGlobalPlaybooks(data.data);
         return data.data;
       } else if (error && error.code === 'PGRST116') {
-        // Not found, seed it
         await supabase.from('global_settings').insert([{ id: 'global_playbook', data: DEFAULT_PHASES }]);
         setGlobalPlaybooks(DEFAULT_PHASES);
         return DEFAULT_PHASES;
@@ -238,6 +323,8 @@ export const AgentProvider = ({ children }) => {
     const init = async () => {
       const currentPlaybook = await loadGlobalPlaybooks();
       const db = await loadAgents();
+      await loadGamificationSettings();
+      await loadXpEvents();
       
       const settings = JSON.parse(localStorage.getItem('mockAdminSettings'));
       if (settings) setAdminSettings(settings);
@@ -247,7 +334,6 @@ export const AgentProvider = ({ children }) => {
         const myData = db.find(a => a.id?.toLowerCase() === myEmail);
         
         if (myData) {
-          // Merge steps from currentPlaybook into saved phases from Supabase
           const savedPhases = myData.phases || currentPlaybook;
           const mergedPhases = savedPhases.map(savedPhase => {
             const defaultPhase = currentPlaybook.find(p => p.id === savedPhase.id);
@@ -297,16 +383,93 @@ export const AgentProvider = ({ children }) => {
     init();
   }, [currentUser]);
 
+  /**
+   * Records an XP event and updates agent total XP in real time
+   */
+  const recordXpEvent = async (agentId, amount, sourceType, sourceId = null, metadata = {}) => {
+    if (!agentId || amount === 0) return;
+
+    // Find agent current XP
+    const targetAgent = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
+    const currentAgentXp = targetAgent ? (Number(targetAgent.xp) || 0) : 0;
+    const newTotalXp = Math.max(0, currentAgentXp + Number(amount));
+
+    const newEvent = {
+      id: `xp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      agent_id: agentId,
+      source_type: sourceType,
+      source_id: sourceId,
+      xp_amount: Number(amount),
+      metadata,
+      created_at: new Date().toISOString()
+    };
+
+    // Update in-memory state immediately for instant responsive UI
+    setXpEvents(prev => {
+      const updated = [newEvent, ...prev];
+      localStorage.setItem('mockXpEvents', JSON.stringify(updated));
+      return updated;
+    });
+
+    setAgents(prevAgents => prevAgents.map(a => {
+      if (a.id?.toLowerCase() === agentId.toLowerCase()) {
+        return { ...a, xp: newTotalXp };
+      }
+      return a;
+    }));
+
+    if (currentAgentData && currentAgentData.id?.toLowerCase() === agentId.toLowerCase()) {
+      setXp(newTotalXp);
+      setCurrentAgentData(prev => ({ ...prev, xp: newTotalXp }));
+    }
+
+    // Persist to Supabase
+    try {
+      await supabase.from('agents').update({ xp: newTotalXp }).eq('id', agentId);
+      await supabase.from('xp_events').insert([newEvent]);
+    } catch (err) {
+      console.log('Error updating database for XP event:', err);
+    }
+  };
+
+  /**
+   * Admin Award XP
+   */
+  const awardAgentXp = async (agentId, amount, reason = 'Admin Bonus') => {
+    await recordXpEvent(agentId, amount, 'manual_admin_award', null, { reason, awardedBy: currentUser?.name || 'Admin' });
+  };
+
+  /**
+   * Update gamification settings
+   */
+  const updateGamificationSettings = async (newSettings) => {
+    const updated = {
+      levelThresholds: newSettings.levelThresholds || gamificationSettings.levelThresholds,
+      phaseUnlockLevels: newSettings.phaseUnlockLevels || gamificationSettings.phaseUnlockLevels
+    };
+    setGamificationSettings(updated);
+    localStorage.setItem('mockGamificationSettings', JSON.stringify(updated));
+
+    try {
+      await supabase.from('global_settings').upsert([{ id: 'gamification_settings', data: updated }]);
+    } catch (err) {
+      console.error('Error saving gamification settings:', err);
+    }
+  };
+
   const toggleItem = async (phaseId, itemId) => {
     if (currentUser?.role !== 'agent' || !currentAgentData) return;
 
     let xpChange = 0;
+    let targetItem = null;
+
     const newPhases = phases.map(phase => {
       if (phase.id === phaseId) {
         return {
           ...phase,
           items: phase.items.map(item => {
             if (item.id === itemId) {
+              targetItem = item;
               xpChange = item.completed ? -item.xp : item.xp;
               const isNowCompleted = !item.completed;
               return { 
@@ -322,9 +485,23 @@ export const AgentProvider = ({ children }) => {
       return phase;
     });
 
-    const newXp = xp + xpChange;
+    const newXp = Math.max(0, xp + xpChange);
     setPhases(newPhases);
     setXp(newXp);
+    setCurrentAgentData(prev => ({ ...prev, phases: newPhases, xp: newXp }));
+
+    // Record XP event
+    if (targetItem) {
+      const isCompleted = !targetItem.completed;
+      const eventType = isCompleted ? 'playbook_task' : 'playbook_task_revert';
+      await recordXpEvent(
+        currentAgentData.id, 
+        xpChange, 
+        eventType, 
+        itemId, 
+        { phaseId, taskText: targetItem.text }
+      );
+    }
 
     await supabase.from('agents').update({ phases: newPhases, xp: newXp }).eq('id', currentAgentData.id);
     loadAgents();
@@ -354,10 +531,22 @@ export const AgentProvider = ({ children }) => {
   };
 
   const getRank = (currentXp) => {
-    if (currentXp < 100) return 'Rookie';
-    if (currentXp < 300) return 'Associate';
-    if (currentXp < 500) return 'Syndicate Pro';
-    return 'Capstone';
+    const info = getLevelInfo(currentXp, gamificationSettings.levelThresholds);
+    return info.title;
+  };
+
+  const getLevel = (currentXp) => {
+    return getLevelInfo(currentXp, gamificationSettings.levelThresholds);
+  };
+
+  const getPhaseStatus = (phaseId, currentLevel, currentAgentXp) => {
+    return getPhaseUnlockStatus(
+      phaseId, 
+      currentLevel, 
+      currentAgentXp, 
+      gamificationSettings.phaseUnlockLevels, 
+      gamificationSettings.levelThresholds
+    );
   };
 
   const addAgent = async (email, name, sponsorData, coSponsorData, initialPassword) => {
@@ -376,7 +565,6 @@ export const AgentProvider = ({ children }) => {
     await supabase.from('agents').insert([newAgent]);
     loadAgents();
 
-    // If initialPassword provided, attempt pre-registering account in Supabase auth
     if (initialPassword) {
       try {
         await supabase.auth.signUp({
@@ -388,7 +576,6 @@ export const AgentProvider = ({ children }) => {
       }
     }
 
-    // Trigger the invitation email
     try {
       await fetch('/api/invite', {
         method: 'POST',
@@ -429,7 +616,6 @@ export const AgentProvider = ({ children }) => {
   const adminUpdateAgent = async (agentId, newName, profileData) => {
     if (!currentUser || currentUser.role !== 'admin') return;
     
-    // fetch current profile to merge
     const targetAgent = agents.find(a => a.id === agentId);
     if (!targetAgent) return;
     
@@ -476,7 +662,33 @@ export const AgentProvider = ({ children }) => {
   };
 
   return (
-    <AgentContext.Provider value={{ agents, phases, globalPlaybooks, xp, currentAgentData, adminSettings, toggleItem, updateTaskStep, getRank, addAgent, updateAdminSettings, updateAgentProfile, adminUpdateAgent, updateAgentStatus, updateAgentPhase, deleteAgent, updateGlobalPlaybooks }}>
+    <AgentContext.Provider value={{ 
+      agents, 
+      phases, 
+      globalPlaybooks, 
+      xp, 
+      xpEvents,
+      gamificationSettings,
+      currentAgentData, 
+      adminSettings, 
+      toggleItem, 
+      updateTaskStep, 
+      getRank, 
+      getLevel,
+      getPhaseStatus,
+      recordXpEvent,
+      awardAgentXp,
+      updateGamificationSettings,
+      addAgent, 
+      updateAdminSettings, 
+      updateAgentProfile, 
+      adminUpdateAgent, 
+      updateAgentStatus, 
+      updateAgentPhase, 
+      deleteAgent, 
+      updateGlobalPlaybooks,
+      loadAgents
+    }}>
       {children}
     </AgentContext.Provider>
   );

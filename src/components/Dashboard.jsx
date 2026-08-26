@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Phone, Mail, Star, Quote, Calendar, Users, FolderOpen, ChevronRight } from 'lucide-react';
+import { ArrowRight, Phone, Mail, Star, Quote, Calendar, Users, FolderOpen, ChevronRight, Lock } from 'lucide-react';
 import BadgeList from './Gamification/BadgeList';
+import LevelBadge from './Gamification/LevelBadge';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAgent } from '../context/AgentContext';
 import { useAuth } from '../context/AuthContext';
 import { useCommunity } from '../context/CommunityContext';
+import { getLevelInfo, getPhaseUnlockStatus } from '../utils/gamification';
 
 const quotes = [
   "Success is the sum of small efforts, repeated day in and day out.",
@@ -14,7 +16,7 @@ const quotes = [
 ];
 
 const Dashboard = () => {
-  const { phases, xp, getRank, currentAgentData } = useAgent();
+  const { phases, xp, gamificationSettings, currentAgentData } = useAgent();
   const { currentUser } = useAuth();
   const { events, posts } = useCommunity();
   const navigate = useNavigate();
@@ -27,6 +29,9 @@ const Dashboard = () => {
     else if (hour < 18) setGreeting('Good afternoon');
     else setGreeting('Good evening');
   }, []);
+
+  const currentXp = Number(xp) || 0;
+  const levelInfo = getLevelInfo(currentXp, gamificationSettings?.levelThresholds);
 
   // Calculate dynamic progress
   const totalItems = phases?.reduce((acc, phase) => acc + (phase?.items?.length || 0), 0) || 0;
@@ -48,7 +53,23 @@ const Dashboard = () => {
     }
   }
 
-  const rank = getRank(xp);
+  // Find next phase to unlock
+  let nextPhaseToUnlock = null;
+  if (phases && Array.isArray(phases)) {
+    for (const phase of phases) {
+      const status = getPhaseUnlockStatus(
+        phase.id, 
+        levelInfo.level, 
+        currentXp, 
+        gamificationSettings?.phaseUnlockLevels, 
+        gamificationSettings?.levelThresholds
+      );
+      if (!status.isUnlocked) {
+        nextPhaseToUnlock = { phase, status };
+        break;
+      }
+    }
+  }
   
   // Calculate stroke dashoffset for the circular progress ring
   const circleRadius = 40;
@@ -75,12 +96,31 @@ const Dashboard = () => {
       {/* Dynamic Hero Section */}
       <div style={styles.heroSection} className="card glowing-card delay-100">
         <div style={styles.heroContent}>
-          <h1 className="text-3xl font-bold mb-2 text-gradient">
-            {greeting}, {currentUser?.name?.split(' ')[0] || 'Agent'}!
-          </h1>
-          <p className="text-lg" style={{ color: 'var(--color-dark-navy)', opacity: 0.8 }}>
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
+            <h1 className="text-3xl font-bold m-0 text-gradient">
+              {greeting}, {currentUser?.name?.split(' ')[0] || 'Agent'}!
+            </h1>
+            <LevelBadge 
+              level={levelInfo.level} 
+              thresholds={gamificationSettings?.levelThresholds} 
+              size="md" 
+              showTitle={true} 
+            />
+          </div>
+          <p className="text-lg m-0" style={{ color: 'var(--color-dark-navy)', opacity: 0.8 }}>
             Let's conquer your business goals today. You are currently in <strong>{currentPhaseTitle}</strong>.
           </p>
+
+          {/* Level Progress Subtext */}
+          {!levelInfo.isMaxLevel ? (
+            <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+              🎯 <strong>{levelInfo.xpToNextLevel} XP</strong> to reach <strong>Level {levelInfo.level + 1} ({levelInfo.nextLevelTitle})</strong>
+            </div>
+          ) : (
+            <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--color-success)', fontWeight: '600' }}>
+              👑 Max Rank Reached: {levelInfo.title}!
+            </div>
+          )}
         </div>
 
         {/* Circular Rank & Progress Visualizer */}
@@ -107,9 +147,9 @@ const Dashboard = () => {
             </div>
           </div>
           <div style={styles.rankInfo}>
-            <div className="text-sm text-muted font-medium uppercase tracking-wider">Current Rank</div>
-            <div className="text-xl font-bold" style={{ color: 'var(--color-dark-navy)' }}>{rank}</div>
-            <div style={styles.xpBadge}><Star size={12} style={{marginRight: '4px'}}/> {xp} XP</div>
+            <div className="text-xs text-muted font-bold uppercase tracking-wider">Level {levelInfo.level}</div>
+            <div className="text-lg font-bold" style={{ color: 'var(--color-dark-navy)' }}>{levelInfo.title}</div>
+            <div style={styles.xpBadge}><Star size={12} style={{marginRight: '4px'}}/> {currentXp} XP</div>
           </div>
         </div>
       </div>
@@ -253,12 +293,21 @@ const Dashboard = () => {
       {/* Gamification Area (Only for Onboarding) */}
       {agentStatus === 'onboarding' && (
         <div className="card animate-fade-in delay-300">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
             <div>
-              <h2 className="text-lg mb-1">Phase Badges</h2>
-              <p className="text-sm text-muted">Complete Playbook phases to unlock your badges.</p>
+              <h2 className="text-lg mb-1">Phase Badges & Progression</h2>
+              <p className="text-sm text-muted">
+                Level up by earning XP to unlock phases and earn your milestone badges.
+              </p>
             </div>
-            <Link to="/achievements" className="text-sm" style={{ color: 'var(--color-primary)', fontWeight: '600' }}>View All</Link>
+            {nextPhaseToUnlock && (
+              <div style={styles.unlockProgressNotice}>
+                <Lock size={14} color="var(--color-primary)" />
+                <span>
+                  <strong>{currentXp} / {nextPhaseToUnlock.status.requiredXp} XP</strong> to unlock <strong>{nextPhaseToUnlock.phase.title}</strong>
+                </span>
+              </div>
+            )}
           </div>
           <BadgeList phases={phases} />
         </div>
@@ -288,9 +337,10 @@ const styles = {
     padding: '2.5rem',
     background: 'linear-gradient(120deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.6) 100%)',
     marginBottom: '1.5rem',
+    borderRadius: 'var(--border-radius)',
   },
   heroContent: {
-    maxWidth: '500px',
+    maxWidth: '540px',
   },
   rankVisualizer: {
     display: 'flex',
@@ -322,67 +372,81 @@ const styles = {
   rankInfo: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.25rem',
+    gap: '0.2rem',
   },
   xpBadge: {
     display: 'inline-flex',
     alignItems: 'center',
-    backgroundColor: 'var(--color-accent)',
-    color: 'white',
-    padding: '0.2rem 0.5rem',
+    backgroundColor: 'rgba(0, 161, 224, 0.1)',
+    color: 'var(--color-primary)',
+    padding: '0.2rem 0.6rem',
     borderRadius: '20px',
     fontSize: '0.75rem',
     fontWeight: '700',
+    width: 'fit-content',
     marginTop: '0.25rem',
-    boxShadow: 'var(--shadow-sm)'
   },
   upNextCard: {
-    background: 'linear-gradient(135deg, var(--color-dark-navy), var(--color-charcoal-blue))',
+    backgroundColor: 'var(--color-dark-navy)',
     color: 'white',
+    position: 'relative',
+    overflow: 'hidden',
     border: 'none',
-    boxShadow: 'var(--shadow-glow)',
   },
   miniXp: {
-    display: 'inline-block',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     color: 'white',
-    padding: '4px 8px',
+    padding: '0.2rem 0.6rem',
     borderRadius: '20px',
     fontSize: '0.75rem',
-    fontWeight: '700',
+    fontWeight: '600',
   },
   actionBtn: {
-    backgroundColor: 'white',
-    color: 'var(--color-dark-navy)',
-    marginTop: '1rem',
-    alignSelf: 'flex-start',
-    background: 'white',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    width: 'fit-content',
+    marginTop: '0.5rem',
+    textDecoration: 'none',
   },
   contactItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: '1rem',
+    gap: '0.75rem',
     padding: '0.75rem',
     backgroundColor: 'var(--color-background)',
-    borderRadius: 'var(--border-radius-sm)',
-    color: 'var(--color-dark-navy)',
-    transition: 'transform var(--transition-fast)',
+    borderRadius: '8px',
+    textDecoration: 'none',
+    color: 'var(--color-text-main)',
+    transition: 'background var(--transition-fast)',
   },
   iconBox: {
-    backgroundColor: 'var(--color-primary)',
-    padding: '0.4rem',
+    width: '28px',
+    height: '28px',
     borderRadius: '6px',
-    display: 'flex'
+    backgroundColor: 'var(--color-primary)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   supportHint: {
-    marginTop: '1.25rem',
-    padding: '1rem',
-    backgroundColor: 'rgba(80, 108, 170, 0.05)',
-    borderRadius: '8px',
     fontSize: '0.8rem',
     fontStyle: 'italic',
-    color: 'var(--color-text-main)',
-    borderLeft: '3px solid var(--color-primary)'
+    color: 'var(--color-text-muted)',
+    marginTop: '1rem',
+    textAlign: 'center',
+  },
+  unlockProgressNotice: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    backgroundColor: 'rgba(0, 161, 224, 0.08)',
+    border: '1px solid rgba(0, 161, 224, 0.25)',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '20px',
+    fontSize: '0.8rem',
+    color: 'var(--color-dark-navy)'
   }
 };
 

@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { useAuth } from './AuthContext';
+import { useAgent } from './AgentContext';
 import { supabase } from '../lib/supabase';
 
 const CommunityContext = createContext();
@@ -8,6 +9,7 @@ export const useCommunity = () => useContext(CommunityContext);
 
 export const CommunityProvider = ({ children }) => {
   const { currentUser } = useAuth();
+  const { agents, recordXpEvent } = useAgent();
   const [posts, setPosts] = useState([]);
   const [events, setEvents] = useState([]);
   const [chats, setChats] = useState({});
@@ -19,10 +21,10 @@ export const CommunityProvider = ({ children }) => {
     ]);
 
     if (postsRes.data) {
-      // Map postgres arrays correctly, though Supabase handles simple arrays well.
       setPosts(postsRes.data.map(p => ({
         id: p.id,
         authorName: p.author,
+        authorId: p.author_id || p.authorId || '',
         authorRole: p.role,
         content: p.text,
         videoUrl: p.media,
@@ -75,7 +77,7 @@ export const CommunityProvider = ({ children }) => {
         ...prevChats,
         [agentId]: {
           ...existingChat,
-          agentName, // ensure name is updated if it changed
+          agentName,
           messages: [...existingChat.messages, newMessage]
         }
       };
@@ -88,11 +90,8 @@ export const CommunityProvider = ({ children }) => {
     if (!currentUser) return;
     
     let finalVideoUrl = rawMediaInput;
-    let isRawHtml = false;
 
-    if (rawMediaInput.trim().startsWith('<')) {
-      isRawHtml = true;
-    } else {
+    if (!rawMediaInput.trim().startsWith('<')) {
       if (rawMediaInput.includes('youtube.com/watch?v=')) {
         const videoId = rawMediaInput.split('v=')[1]?.split('&')[0];
         finalVideoUrl = `https://www.youtube.com/embed/${videoId}`;
@@ -111,7 +110,7 @@ export const CommunityProvider = ({ children }) => {
     const newPost = {
       id: `post-${Date.now()}`,
       author: currentUser.name,
-      author_id: currentUser.id,
+      author_id: currentUser.id || currentUser.email,
       role: currentUser.role === 'admin' ? 'Admin' : 'Agent',
       text: content,
       media: finalVideoUrl,
@@ -129,25 +128,46 @@ export const CommunityProvider = ({ children }) => {
 
   const toggleLike = async (postId) => {
     if (!currentUser) return;
-    const userId = currentUser.id;
+    const userId = currentUser.id || currentUser.email;
 
     const post = posts.find(p => p.id === postId);
     if (!post) return;
 
-    const hasLiked = post.likes.includes(userId);
-    const updatedLikes = hasLiked ? post.likes.filter(id => id !== userId) : [...post.likes, userId];
+    const hasLiked = (post.likes || []).includes(userId);
+    const updatedLikes = hasLiked ? post.likes.filter(id => id !== userId) : [...(post.likes || []), userId];
+
+    // Optimistically update local posts array
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: updatedLikes } : p));
+
+    // Award +1 XP (or -1 XP if unliking) to the author if they are an agent
+    const authorIdentifier = post.authorId || post.author_id;
+    let targetAgent = agents.find(a => 
+      (authorIdentifier && a.id?.toLowerCase() === authorIdentifier?.toLowerCase()) ||
+      (post.authorName && a.name?.toLowerCase() === post.authorName?.toLowerCase())
+    );
+
+    if (targetAgent && recordXpEvent) {
+      const xpDelta = hasLiked ? -1 : 1;
+      const eventType = hasLiked ? 'training_feed_unlike' : 'training_feed_like';
+      await recordXpEvent(
+        targetAgent.id,
+        xpDelta,
+        eventType,
+        postId,
+        { 
+          likedBy: currentUser.name || userId, 
+          postSnippet: post.content ? post.content.substring(0, 40) : 'Training Post' 
+        }
+      );
+    }
 
     await supabase.from('posts').update({ likes: updatedLikes }).eq('id', postId);
-    loadCommunityData();
   };
 
   const updatePost = async (postId, updatedData) => {
     let finalVideoUrl = updatedData.media || '';
-    let isRawHtml = false;
 
-    if (finalVideoUrl.trim().startsWith('<')) {
-      isRawHtml = true;
-    } else {
+    if (!finalVideoUrl.trim().startsWith('<')) {
       if (finalVideoUrl.includes('youtube.com/watch?v=')) {
         const videoId = finalVideoUrl.split('v=')[1]?.split('&')[0];
         finalVideoUrl = `https://www.youtube.com/embed/${videoId}`;
@@ -237,7 +257,21 @@ export const CommunityProvider = ({ children }) => {
   };
 
   return (
-    <CommunityContext.Provider value={{ posts, events, chats, addPost, updatePost, deletePost, toggleLike, addEvent, updateEvent, approveEvent, rejectEvent, deleteEvent, sendMessage }}>
+    <CommunityContext.Provider value={{ 
+      posts, 
+      events, 
+      chats, 
+      addPost, 
+      updatePost, 
+      deletePost, 
+      toggleLike, 
+      addEvent, 
+      updateEvent, 
+      approveEvent, 
+      rejectEvent, 
+      deleteEvent, 
+      sendMessage 
+    }}>
       {children}
     </CommunityContext.Provider>
   );
