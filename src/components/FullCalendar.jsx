@@ -196,7 +196,7 @@ const FullCalendar = () => {
           newEventInstructor,
           newEventSubmittedBy || currentUser?.name || currentUser?.email || 'Anonymous'
         );
-        alert("Event submitted for admin approval!");
+        alert(currentUser?.role === 'admin' ? "Event added to calendar!" : "Event submitted for admin approval!");
       }
       setIsSubmitting(false);
       setEditingEventId(null);
@@ -212,7 +212,8 @@ const FullCalendar = () => {
     }
   };
 
-  const handleEventClick = (evt) => {
+  const handleEventClick = (e, evt) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     if (isBulkMode) {
       setSelectedEventIds(prev => 
         prev.includes(evt.id) ? prev.filter(id => id !== evt.id) : [...prev, evt.id]
@@ -244,11 +245,11 @@ const FullCalendar = () => {
     }
   };
 
-  const openSuggestModal = () => {
+  const openSuggestModal = (initialDate = '', initialTime = '') => {
     setEditingEventId(null);
     setNewEventTitle('');
-    setNewEventDate('');
-    setNewEventTime('');
+    setNewEventDate(initialDate || '');
+    setNewEventTime(initialTime || '');
     setNewEventEndTime('');
     setNewEventLocation('');
     setNewEventDesc('');
@@ -318,9 +319,9 @@ const FullCalendar = () => {
                 <CalendarPlus size={18} />
                 Subscribe
               </button>
-              <button className="btn-primary" onClick={openSuggestModal}>
+              <button className="btn-primary" onClick={() => openSuggestModal()}>
                 <Plus size={18} />
-                Suggest Event
+                {currentUser?.role === 'admin' ? 'Add Event' : 'Suggest Event'}
               </button>
             </>
           )}
@@ -406,9 +407,38 @@ const FullCalendar = () => {
                 {daysArray.map(day => {
                   const dayEvents = getEventsForDay(day);
                   const isToday = new Date().getDate() === day && new Date().getMonth() === month && new Date().getFullYear() === year;
+                  const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                   return (
-                    <div key={day} style={{...styles.dayCell, ...(isToday ? styles.todayCell : {})}}>
-                      <div style={styles.dayNumber}>{day}</div>
+                    <div 
+                      key={day} 
+                      style={{
+                        ...styles.dayCell, 
+                        ...(isToday ? styles.todayCell : {}),
+                        cursor: isBulkMode ? 'default' : 'pointer'
+                      }}
+                      onClick={() => {
+                        if (!isBulkMode) {
+                          openSuggestModal(formattedDate);
+                        }
+                      }}
+                      title={!isBulkMode ? `Click to add event on ${formattedDate}` : undefined}
+                    >
+                      <div style={styles.dayCellHeader}>
+                        <div style={styles.dayNumber}>{day}</div>
+                        {!isBulkMode && (
+                          <button
+                            type="button"
+                            style={styles.addDayBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openSuggestModal(formattedDate);
+                            }}
+                            title={`Add event on ${formattedDate}`}
+                          >
+                            <Plus size={13} />
+                          </button>
+                        )}
+                      </div>
                       <div style={styles.eventsWrapper}>
                         {dayEvents.map(evt => {
                           const isSelected = selectedEventIds.includes(evt.id);
@@ -424,7 +454,7 @@ const FullCalendar = () => {
                                 borderLeft: isBulkMode && isSelected ? `4px solid ${categoryTheme.color}` : `3px solid ${categoryTheme.color}`,
                                 opacity: isBulkMode && !isSelected ? 0.6 : 1
                               }} 
-                              onClick={() => handleEventClick(evt)}
+                              onClick={(e) => handleEventClick(e, evt)}
                             >
                               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                                 <span style={{fontWeight: 600, color: categoryTheme.color}}>{formatTime(evt.time)}</span>
@@ -496,24 +526,57 @@ const FullCalendar = () => {
             <div style={{ overflowX: 'auto', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
               <div style={{ minWidth: '600px', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${daysToShow.length}, 1fr)`, borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
-                  {daysToShow.map(d => (
-                    <div key={d.toISOString()} style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--color-dark-navy)', borderRight: '1px solid var(--color-border)' }}>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                        {d.toLocaleString('default', { weekday: 'short' })}
+                  {daysToShow.map(d => {
+                    const formattedDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    return (
+                      <div key={d.toISOString()} style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--color-dark-navy)', borderRight: '1px solid var(--color-border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                            {d.toLocaleString('default', { weekday: 'short' })}
+                          </div>
+                          {!isBulkMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openSuggestModal(formattedDate);
+                              }}
+                              style={styles.addDayBtn}
+                              title={`Add event on ${formattedDate}`}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '1.25rem', marginTop: '0.25rem' }}>
+                          {d.getDate()}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '1.25rem', marginTop: '0.25rem' }}>
-                        {d.getDate()}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${daysToShow.length}, 1fr)`, flexGrow: 1 }}>
                   {daysToShow.map(d => {
                     const dayEvents = getEventsForDateObj(d);
                     const isToday = new Date().toDateString() === d.toDateString();
+                    const formattedDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                     return (
-                      <div key={d.toISOString()} style={{ ...styles.dayCell, ...(isToday ? styles.todayCell : {}), minHeight: '400px' }}>
+                      <div 
+                        key={d.toISOString()} 
+                        style={{ 
+                          ...styles.dayCell, 
+                          ...(isToday ? styles.todayCell : {}), 
+                          minHeight: '400px',
+                          cursor: isBulkMode ? 'default' : 'pointer'
+                        }}
+                        onClick={() => {
+                          if (!isBulkMode) {
+                            openSuggestModal(formattedDate);
+                          }
+                        }}
+                        title={!isBulkMode ? `Click to add event on ${formattedDate}` : undefined}
+                      >
                         <div style={styles.eventsWrapper}>
                           {dayEvents.map(evt => {
                             const isSelected = selectedEventIds.includes(evt.id);
@@ -531,7 +594,7 @@ const FullCalendar = () => {
                                   padding: '0.5rem',
                                   marginBottom: '0.5rem'
                                 }} 
-                                onClick={() => handleEventClick(evt)}
+                                onClick={(e) => handleEventClick(e, evt)}
                               >
                                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem'}}>
                                   <span style={{fontWeight: 600, color: categoryTheme.color}}>{formatTime(evt.time)}</span>
@@ -585,12 +648,31 @@ const FullCalendar = () => {
                     cursor: 'pointer',
                     display: 'flex',
                     justifyContent: 'space-between',
+                    alignItems: 'center',
                     fontWeight: 'bold',
                     color: 'var(--color-dark-navy)'
                   }}
                 >
                   <span>{monthName} ({monthEvents.length})</span>
-                  <span>{isExpanded ? '▼' : '▶'}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {!isBulkMode && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const defaultDay = new Date(parseInt(y, 10), parseInt(m, 10), 1);
+                          const formattedDate = `${defaultDay.getFullYear()}-${String(defaultDay.getMonth() + 1).padStart(2, '0')}-01`;
+                          openSuggestModal(formattedDate);
+                        }}
+                        className="btn-secondary"
+                        style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: 'white' }}
+                        title={`Add event in ${monthName}`}
+                      >
+                        <Plus size={14} /> Add Event
+                      </button>
+                    )}
+                    <span>{isExpanded ? '▼' : '▶'}</span>
+                  </div>
                 </div>
                 {isExpanded && (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -600,8 +682,8 @@ const FullCalendar = () => {
                       
                       return (
                         <div 
-                          key={evt.id}
-                          onClick={() => handleEventClick(evt)}
+                          key={evt.id} 
+                          onClick={(e) => handleEventClick(e, evt)}
                           style={{
                             padding: '1rem',
                             borderTop: '1px solid var(--color-border)',
@@ -674,16 +756,21 @@ const FullCalendar = () => {
           <div style={styles.modalContent} className="animate-fade-in">
             <div style={styles.modalHeader}>
               <h3 style={{margin: 0, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
-                <CalendarIcon size={18} /> {editingEventId ? 'Edit Event' : 'Suggest New Event'}
+                <CalendarIcon size={18} /> {editingEventId ? 'Edit Event' : (currentUser?.role === 'admin' ? 'Add Calendar Event' : 'Suggest New Event')}
               </h3>
               <button onClick={() => { setIsSubmitting(false); setEditingEventId(null); setNewEventSubmittedBy(userName); }} style={styles.closeBtn}>
                 <X size={20} />
               </button>
             </div>
             <div style={styles.modalBody}>
-              {!editingEventId && (
+              {!editingEventId && currentUser?.role !== 'admin' && (
                 <p style={{fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: '1rem'}}>
                   Suggested events will be sent to the admin team for approval before appearing on the public calendar.
+                </p>
+              )}
+              {!editingEventId && currentUser?.role === 'admin' && (
+                <p style={{fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: '1rem'}}>
+                  New events scheduled as an admin will immediately appear on the calendar.
                 </p>
               )}
               <form onSubmit={handleSubmitEvent} style={styles.form}>
@@ -736,7 +823,7 @@ const FullCalendar = () => {
                 
                 <div style={{display: 'flex', justifyContent: 'flex-end', gap: '0.75rem'}}>
                   <button type="button" onClick={() => { setIsSubmitting(false); setEditingEventId(null); setNewEventSubmittedBy(userName); }} style={styles.cancelBtn}>Cancel</button>
-                  <button type="submit" className="btn-primary">{editingEventId ? 'Save Changes' : 'Submit Event'}</button>
+                  <button type="submit" className="btn-primary">{editingEventId ? 'Save Changes' : (currentUser?.role === 'admin' ? 'Add Event' : 'Submit Event')}</button>
                 </div>
               </form>
             </div>
@@ -953,6 +1040,25 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     position: 'relative',
+    transition: 'background-color 0.15s ease',
+  },
+  dayCellHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.35rem',
+  },
+  addDayBtn: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--color-text-muted)',
+    cursor: 'pointer',
+    padding: '2px 4px',
+    borderRadius: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s ease',
   },
   blankCell: {
     backgroundColor: 'rgba(0,0,0,0.02)',
@@ -965,8 +1071,7 @@ const styles = {
   dayNumber: {
     fontWeight: '600',
     color: 'var(--color-text-muted)',
-    fontSize: '0.9rem',
-    marginBottom: '0.5rem',
+    fontSize: '0.85rem',
   },
   eventsWrapper: {
     display: 'flex',
