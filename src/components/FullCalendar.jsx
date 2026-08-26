@@ -31,6 +31,7 @@ const FullCalendar = () => {
   const [newEventDesc, setNewEventDesc] = useState('');
   const [newEventCategory, setNewEventCategory] = useState('Sales Meeting');
   const [newEventInstructor, setNewEventInstructor] = useState('');
+  const [newEventSubmittedBy, setNewEventSubmittedBy] = useState('');
 
   // Bulk Download State
   const [isBulkMode, setIsBulkMode] = useState(false);
@@ -117,6 +118,12 @@ const FullCalendar = () => {
     };
 
     const vEvents = evts.map(evt => {
+      const descLines = [];
+      if (evt.instructor) descLines.push(`Instructor: ${evt.instructor}`);
+      if (evt.submitted_by || evt.submittedBy) descLines.push(`Suggested By: ${evt.submitted_by || evt.submittedBy}`);
+      if (evt.description) descLines.push(evt.description);
+      const fullDesc = descLines.length > 0 ? descLines.join('\n\n') : 'No description';
+
       return [
         'BEGIN:VEVENT',
         `UID:${evt.id}@expsyndicate.com`,
@@ -125,7 +132,7 @@ const FullCalendar = () => {
         evt.end_time || evt.endTime ? `DTEND:${formatIcsDate(evt.date, evt.end_time || evt.endTime)}` : null,
         `SUMMARY:${evt.title}`,
         evt.location ? `LOCATION:${evt.location}` : null,
-        `DESCRIPTION:${evt.description || 'No description'}`,
+        `DESCRIPTION:${fullDesc}`,
         'END:VEVENT'
       ].filter(Boolean).join('\n');
     }).join('\n');
@@ -164,7 +171,8 @@ const FullCalendar = () => {
           location: newEventLocation,
           description: newEventDesc,
           category: newEventCategory,
-          instructor: newEventInstructor
+          instructor: newEventInstructor,
+          submittedBy: newEventSubmittedBy || currentUser?.name || currentUser?.email || 'Anonymous'
         });
         alert("Event updated successfully!");
       } else {
@@ -177,7 +185,7 @@ const FullCalendar = () => {
           newEventDesc, 
           newEventCategory,
           newEventInstructor,
-          currentUser?.name || 'Anonymous'
+          newEventSubmittedBy || currentUser?.name || currentUser?.email || 'Anonymous'
         );
         alert("Event submitted for admin approval!");
       }
@@ -190,6 +198,7 @@ const FullCalendar = () => {
       setNewEventLocation('');
       setNewEventDesc('');
       setNewEventInstructor('');
+      setNewEventSubmittedBy('');
       setNewEventCategory('Sales Meeting');
     }
   };
@@ -213,6 +222,7 @@ const FullCalendar = () => {
     setNewEventDesc(evt.description || '');
     setNewEventCategory(evt.type || 'Sales Meeting');
     setNewEventInstructor(evt.instructor || '');
+    setNewEventSubmittedBy(evt.submitted_by || evt.submittedBy || '');
     setEditingEventId(evt.id);
     setSelectedEvent(null);
     setIsSubmitting(true);
@@ -234,6 +244,7 @@ const FullCalendar = () => {
     setNewEventLocation('');
     setNewEventDesc('');
     setNewEventInstructor('');
+    setNewEventSubmittedBy(currentUser?.name || currentUser?.email || '');
     setNewEventCategory('Sales Meeting');
     setIsSubmitting(true);
   };
@@ -695,13 +706,22 @@ const FullCalendar = () => {
                   placeholder="Location or Link (Optional)" 
                 />
                 
-                <input 
-                  type="text" 
-                  placeholder="Instructor Name (Optional)" 
-                  value={newEventInstructor} 
-                  onChange={(e) => setNewEventInstructor(e.target.value)} 
-                  style={styles.input} 
-                />
+                <div style={{display: 'flex', gap: '1rem'}}>
+                  <input 
+                    type="text" 
+                    placeholder="Instructor Name (Optional)" 
+                    value={newEventInstructor} 
+                    onChange={(e) => setNewEventInstructor(e.target.value)} 
+                    style={{...styles.input, flex: 1}} 
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="Suggested By (Optional)" 
+                    value={newEventSubmittedBy} 
+                    onChange={(e) => setNewEventSubmittedBy(e.target.value)} 
+                    style={{...styles.input, flex: 1}} 
+                  />
+                </div>
                 
                 <textarea placeholder="Description or meeting link..." value={newEventDesc} onChange={(e) => setNewEventDesc(e.target.value)} style={styles.textArea} rows={4} />
                 
@@ -769,6 +789,13 @@ const FullCalendar = () => {
                 <div style={styles.detailRow}>
                   <User size={16} color="var(--color-primary)" />
                   <span><strong>Instructor:</strong> {selectedEvent.instructor}</span>
+                </div>
+              )}
+
+              {(selectedEvent.submitted_by || selectedEvent.submittedBy) && (
+                <div style={styles.detailRow}>
+                  <User size={16} color="var(--color-primary)" />
+                  <span><strong>Suggested By:</strong> {selectedEvent.submitted_by || selectedEvent.submittedBy}</span>
                 </div>
               )}
               

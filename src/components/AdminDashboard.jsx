@@ -13,7 +13,7 @@ import PlaybookManager from './PlaybookManager';
 import AgentAutocomplete from './AgentAutocomplete';
 
 const AdminDashboard = () => {
-  const { emulateUser } = useAuth();
+  const { currentUser, emulateUser } = useAuth();
   const { agents, addAgent, getRank, adminSettings, updateAgentStatus, adminUpdateAgent, deleteAgent } = useAgent();
   const { events, posts, addPost, updatePost, deletePost, addEvent, updateEvent, deleteEvent, approveEvent, rejectEvent, chats, sendMessage } = useCommunity();
   
@@ -128,6 +128,8 @@ const AdminDashboard = () => {
   const [newEventEndTime, setNewEventEndTime] = useState('');
   const [newEventLocation, setNewEventLocation] = useState('');
   const [newEventDesc, setNewEventDesc] = useState('');
+  const [newEventInstructor, setNewEventInstructor] = useState('');
+  const [newEventSubmittedBy, setNewEventSubmittedBy] = useState('');
   const [editingEventId, setEditingEventId] = useState(null);
 
   // Post Management State
@@ -270,11 +272,23 @@ const AdminDashboard = () => {
           time: newEventTime,
           endTime: newEventEndTime,
           location: newEventLocation,
-          description: newEventDesc
+          description: newEventDesc,
+          instructor: newEventInstructor,
+          submittedBy: newEventSubmittedBy || currentUser?.name || 'Admin'
         });
         alert("Event updated successfully!");
       } else {
-        addEvent(newEventTitle, newEventDate, newEventTime, newEventEndTime, newEventLocation, newEventDesc);
+        addEvent(
+          newEventTitle, 
+          newEventDate, 
+          newEventTime, 
+          newEventEndTime, 
+          newEventLocation, 
+          newEventDesc, 
+          'general', 
+          newEventInstructor, 
+          newEventSubmittedBy || currentUser?.name || 'Admin'
+        );
         alert("Event scheduled successfully!");
       }
       
@@ -284,6 +298,8 @@ const AdminDashboard = () => {
       setNewEventEndTime('');
       setNewEventLocation('');
       setNewEventDesc('');
+      setNewEventInstructor('');
+      setNewEventSubmittedBy('');
       setEditingEventId(null);
     }
   };
@@ -293,9 +309,11 @@ const AdminDashboard = () => {
     setNewEventTitle(evt.title || '');
     setNewEventDate(evt.date || '');
     setNewEventTime(evt.time || '');
-    setNewEventEndTime(evt.endTime || '');
+    setNewEventEndTime(evt.endTime || evt.end_time || '');
     setNewEventLocation(evt.location || '');
     setNewEventDesc(evt.description || '');
+    setNewEventInstructor(evt.instructor || '');
+    setNewEventSubmittedBy(evt.submitted_by || evt.submittedBy || '');
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -657,10 +675,10 @@ const AdminDashboard = () => {
                         {evt.date && !isNaN(new Date(evt.date + 'T12:00:00').getTime()) ? new Date(evt.date + 'T12:00:00').toLocaleDateString() : (evt.date || 'No Date')} {evt.time && `at ${evt.time}`} {evt.endTime && `- ${evt.endTime}`} {evt.location && `| ${evt.location}`}
                       </p>
                       {evt.description && <p style={{margin: 0, fontSize: '0.85rem', color: 'var(--color-text-main)'}}>{evt.description}</p>}
-                      {(evt.instructor || evt.submitted_by) && (
+                      {(evt.instructor || evt.submitted_by || evt.submittedBy) && (
                         <div style={{marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1rem'}}>
                           {evt.instructor && <span><strong>Instructor:</strong> {evt.instructor}</span>}
-                          {evt.submitted_by && <span><strong>Suggested By:</strong> {evt.submitted_by}</span>}
+                          {(evt.submitted_by || evt.submittedBy) && <span><strong>Suggested By:</strong> {evt.submitted_by || evt.submittedBy}</span>}
                         </div>
                       )}
                     </div>
@@ -732,6 +750,12 @@ const AdminDashboard = () => {
                         {evt.date && !isNaN(new Date(evt.date + 'T12:00:00').getTime()) ? new Date(evt.date + 'T12:00:00').toLocaleDateString() : (evt.date || 'No Date')} {evt.time && `at ${evt.time}`} {evt.endTime && `- ${evt.endTime}`} {evt.location && `| ${evt.location}`}
                       </p>
                       {evt.description && <p style={{margin: 0, fontSize: '0.85rem', color: 'var(--color-text-main)'}}>{evt.description}</p>}
+                      {(evt.instructor || evt.submitted_by || evt.submittedBy) && (
+                        <div style={{marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1rem'}}>
+                          {evt.instructor && <span><strong>Instructor:</strong> {evt.instructor}</span>}
+                          {(evt.submitted_by || evt.submittedBy) && <span><strong>Suggested By:</strong> {evt.submitted_by || evt.submittedBy}</span>}
+                        </div>
+                      )}
                     </div>
                     <div style={{display: 'flex', gap: '0.5rem'}}>
                       <button onClick={() => startEditingEvent(evt)} className="btn-primary" style={{backgroundColor: 'var(--color-primary)', padding: '0.5rem'}}>
@@ -949,6 +973,16 @@ const AdminDashboard = () => {
                   placeholder="e.g., eXp World, Zoom link, or Office address"
                 />
               </div>
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                <div>
+                  <label style={styles.label}>Instructor (Optional)</label>
+                  <input type="text" placeholder="e.g., Brian Burds" value={newEventInstructor} onChange={(e) => setNewEventInstructor(e.target.value)} style={styles.input} />
+                </div>
+                <div>
+                  <label style={styles.label}>Suggested By (Optional)</label>
+                  <input type="text" placeholder="e.g., Admin" value={newEventSubmittedBy} onChange={(e) => setNewEventSubmittedBy(e.target.value)} style={styles.input} />
+                </div>
+              </div>
               <div>
                 <label style={styles.label}>Description</label>
                 <textarea placeholder="Event details..." value={newEventDesc} onChange={(e) => setNewEventDesc(e.target.value)} style={styles.textArea} rows={3} />
@@ -963,6 +997,8 @@ const AdminDashboard = () => {
                     setNewEventEndTime('');
                     setNewEventLocation('');
                     setNewEventDesc('');
+                    setNewEventInstructor('');
+                    setNewEventSubmittedBy('');
                   }}>
                     Cancel Edit
                   </button>

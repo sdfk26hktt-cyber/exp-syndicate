@@ -40,6 +40,8 @@ create table public.events (
     description text,
     status text default 'pending',
     type text default 'general',
+    instructor text,
+    submitted_by text,
     attendees text[]
 );
 

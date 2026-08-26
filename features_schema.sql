@@ -44,4 +44,9 @@ create policy "Allow public read access to faqs" on public.faqs for select using
 create policy "Allow all actions on faqs" on public.faqs for all using (true) with check (true);
 
 -- Add attached_resources to posts table
-alter table public.posts add column attached_resources jsonb[] default '{}';
+alter table public.posts add column if not exists attached_resources jsonb[] default '{}';
+
+-- Add instructor and submitted_by to events table
+alter table public.events add column if not exists instructor text;
+alter table public.events add column if not exists submitted_by text;
+

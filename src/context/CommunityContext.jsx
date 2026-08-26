@@ -46,6 +46,9 @@ export const CommunityProvider = ({ children }) => {
         description: e.description,
         status: e.status,
         type: e.type,
+        instructor: e.instructor || '',
+        submitted_by: e.submitted_by || e.submittedBy || '',
+        submittedBy: e.submitted_by || e.submittedBy || '',
         attendees: e.attendees || []
       })).sort((a, b) => new Date(a.date) - new Date(b.date)));
     }
@@ -180,6 +183,7 @@ export const CommunityProvider = ({ children }) => {
 
   const addEvent = async (title, date, time, endTime, location, description, category = 'general', instructor = '', submittedBy = '') => {
     const status = currentUser?.role === 'admin' ? 'approved' : 'pending';
+    const finalSubmittedBy = submittedBy || currentUser?.name || currentUser?.email || 'Anonymous';
     const newEvent = {
       id: `evt-${Date.now()}`,
       title,
@@ -190,8 +194,8 @@ export const CommunityProvider = ({ children }) => {
       description,
       status,
       type: category,
-      instructor,
-      submitted_by: submittedBy,
+      instructor: instructor || '',
+      submitted_by: finalSubmittedBy,
       attendees: []
     };
     await supabase.from('events').insert([newEvent]);
@@ -199,7 +203,7 @@ export const CommunityProvider = ({ children }) => {
   };
 
   const updateEvent = async (eventId, updatedData) => {
-    await supabase.from('events').update({
+    const payload = {
       title: updatedData.title,
       date: updatedData.date,
       time: updatedData.time,
@@ -208,8 +212,12 @@ export const CommunityProvider = ({ children }) => {
       description: updatedData.description,
       status: updatedData.status,
       type: updatedData.category || 'general',
-      instructor: updatedData.instructor
-    }).eq('id', eventId);
+      instructor: updatedData.instructor || ''
+    };
+    if (updatedData.submitted_by || updatedData.submittedBy) {
+      payload.submitted_by = updatedData.submitted_by || updatedData.submittedBy;
+    }
+    await supabase.from('events').update(payload).eq('id', eventId);
     loadCommunityData();
   };
 
