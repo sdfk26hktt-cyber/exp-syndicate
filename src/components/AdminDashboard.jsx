@@ -14,8 +14,9 @@ import AgentAutocomplete from './AgentAutocomplete';
 
 const AdminDashboard = () => {
   const { currentUser, emulateUser } = useAuth();
-  const { agents, addAgent, getRank, adminSettings, updateAgentStatus, adminUpdateAgent, deleteAgent } = useAgent();
+  const { agents, addAgent, getRank, adminSettings, updateAgentStatus, adminUpdateAgent, deleteAgent, currentAgentData } = useAgent();
   const { events, posts, addPost, updatePost, deletePost, addEvent, updateEvent, deleteEvent, approveEvent, rejectEvent, chats, sendMessage } = useCommunity();
+  const userName = currentAgentData?.name || currentUser?.name || currentUser?.email || 'Admin';
   
   const [activeTab, setActiveTab] = useState('pipeline'); // 'pipeline' | 'community' | 'calendar' | 'inbox' | 'feed-preview' | 'admins' | 'playbooks'
   
@@ -129,8 +130,14 @@ const AdminDashboard = () => {
   const [newEventLocation, setNewEventLocation] = useState('');
   const [newEventDesc, setNewEventDesc] = useState('');
   const [newEventInstructor, setNewEventInstructor] = useState('');
-  const [newEventSubmittedBy, setNewEventSubmittedBy] = useState('');
+  const [newEventSubmittedBy, setNewEventSubmittedBy] = useState(userName);
   const [editingEventId, setEditingEventId] = useState(null);
+
+  React.useEffect(() => {
+    if (!editingEventId && (!newEventSubmittedBy || newEventSubmittedBy === 'Admin') && userName) {
+      setNewEventSubmittedBy(userName);
+    }
+  }, [userName, editingEventId]);
 
   // Post Management State
   const [editingPostId, setEditingPostId] = useState(null);
@@ -299,7 +306,7 @@ const AdminDashboard = () => {
       setNewEventLocation('');
       setNewEventDesc('');
       setNewEventInstructor('');
-      setNewEventSubmittedBy('');
+      setNewEventSubmittedBy(userName);
       setEditingEventId(null);
     }
   };
@@ -313,7 +320,7 @@ const AdminDashboard = () => {
     setNewEventLocation(evt.location || '');
     setNewEventDesc(evt.description || '');
     setNewEventInstructor(evt.instructor || '');
-    setNewEventSubmittedBy(evt.submitted_by || evt.submittedBy || '');
+    setNewEventSubmittedBy(evt.submitted_by || evt.submittedBy || userName);
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -998,7 +1005,7 @@ const AdminDashboard = () => {
                     setNewEventLocation('');
                     setNewEventDesc('');
                     setNewEventInstructor('');
-                    setNewEventSubmittedBy('');
+                    setNewEventSubmittedBy(userName);
                   }}>
                     Cancel Edit
                   </button>

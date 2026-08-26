@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
+import { useAgent } from '../context/AgentContext';
 import { Calendar as CalendarIcon, Download, Plus, X, MapPin, CheckSquare, Square, ChevronDown, CalendarPlus, Copy, User } from 'lucide-react';
 import LocationAutocomplete from './LocationAutocomplete';
 
@@ -16,6 +17,8 @@ const CATEGORIES = {
 const FullCalendar = () => {
   const { events, addEvent, updateEvent, deleteEvent } = useCommunity();
   const { currentUser } = useAuth();
+  const { currentAgentData } = useAgent();
+  const userName = currentAgentData?.name || currentUser?.name || currentUser?.email || '';
   
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -31,7 +34,13 @@ const FullCalendar = () => {
   const [newEventDesc, setNewEventDesc] = useState('');
   const [newEventCategory, setNewEventCategory] = useState('Sales Meeting');
   const [newEventInstructor, setNewEventInstructor] = useState('');
-  const [newEventSubmittedBy, setNewEventSubmittedBy] = useState('');
+  const [newEventSubmittedBy, setNewEventSubmittedBy] = useState(userName);
+
+  useEffect(() => {
+    if (!editingEventId && (!newEventSubmittedBy || newEventSubmittedBy === 'Anonymous') && userName) {
+      setNewEventSubmittedBy(userName);
+    }
+  }, [userName, editingEventId]);
 
   // Bulk Download State
   const [isBulkMode, setIsBulkMode] = useState(false);
@@ -198,7 +207,7 @@ const FullCalendar = () => {
       setNewEventLocation('');
       setNewEventDesc('');
       setNewEventInstructor('');
-      setNewEventSubmittedBy('');
+      setNewEventSubmittedBy(userName);
       setNewEventCategory('Sales Meeting');
     }
   };
@@ -222,7 +231,7 @@ const FullCalendar = () => {
     setNewEventDesc(evt.description || '');
     setNewEventCategory(evt.type || 'Sales Meeting');
     setNewEventInstructor(evt.instructor || '');
-    setNewEventSubmittedBy(evt.submitted_by || evt.submittedBy || '');
+    setNewEventSubmittedBy(evt.submitted_by || evt.submittedBy || userName);
     setEditingEventId(evt.id);
     setSelectedEvent(null);
     setIsSubmitting(true);
@@ -244,7 +253,7 @@ const FullCalendar = () => {
     setNewEventLocation('');
     setNewEventDesc('');
     setNewEventInstructor('');
-    setNewEventSubmittedBy(currentUser?.name || currentUser?.email || '');
+    setNewEventSubmittedBy(userName);
     setNewEventCategory('Sales Meeting');
     setIsSubmitting(true);
   };
@@ -667,7 +676,7 @@ const FullCalendar = () => {
               <h3 style={{margin: 0, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
                 <CalendarIcon size={18} /> {editingEventId ? 'Edit Event' : 'Suggest New Event'}
               </h3>
-              <button onClick={() => { setIsSubmitting(false); setEditingEventId(null); }} style={styles.closeBtn}>
+              <button onClick={() => { setIsSubmitting(false); setEditingEventId(null); setNewEventSubmittedBy(userName); }} style={styles.closeBtn}>
                 <X size={20} />
               </button>
             </div>
@@ -726,7 +735,7 @@ const FullCalendar = () => {
                 <textarea placeholder="Description or meeting link..." value={newEventDesc} onChange={(e) => setNewEventDesc(e.target.value)} style={styles.textArea} rows={4} />
                 
                 <div style={{display: 'flex', justifyContent: 'flex-end', gap: '0.75rem'}}>
-                  <button type="button" onClick={() => { setIsSubmitting(false); setEditingEventId(null); }} style={styles.cancelBtn}>Cancel</button>
+                  <button type="button" onClick={() => { setIsSubmitting(false); setEditingEventId(null); setNewEventSubmittedBy(userName); }} style={styles.cancelBtn}>Cancel</button>
                   <button type="submit" className="btn-primary">{editingEventId ? 'Save Changes' : 'Submit Event'}</button>
                 </div>
               </form>
