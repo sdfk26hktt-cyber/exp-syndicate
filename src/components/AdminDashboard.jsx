@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -10,6 +10,7 @@ import ResourceBoard from './ResourceBoard';
 import { supabase } from '../lib/supabase';
 import ErrorBoundary from './ErrorBoundary';
 import PlaybookManager from './PlaybookManager';
+import ClassroomManager from './Classroom/ClassroomManager';
 import AgentAutocomplete from './AgentAutocomplete';
 import LevelBadge from './Gamification/LevelBadge';
 import { DEFAULT_LEVEL_THRESHOLDS, DEFAULT_PHASE_UNLOCK_LEVELS } from '../utils/gamification';
@@ -451,6 +452,12 @@ const AdminDashboard = () => {
           onClick={() => setActiveTab('resources')}
         >
           Resources & Playbooks
+        </button>
+        <button 
+          style={{...styles.tabBtn, ...(activeTab === 'classroom' ? styles.activeTab : {})}}
+          onClick={() => setActiveTab('classroom')}
+        >
+          Classroom Builder
         </button>
         <button 
           style={{...styles.tabBtn, ...(activeTab === 'inbox' ? styles.activeTab : {})}}
@@ -1597,6 +1604,12 @@ const AdminDashboard = () => {
             <PlaybookManager />
           </div>
         </>
+      )}
+
+      {activeTab === 'classroom' && (
+        <div className="mt-4">
+          <ClassroomManager />
+        </div>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Library, Settings, LogOut, Users, ListChecks, Shield, Video, Calendar, KeyRound, Contact } from 'lucide-react';
+import { Home, Library, Settings, LogOut, ListChecks, Shield, Video, Calendar, KeyRound, Contact, GraduationCap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 
@@ -51,6 +51,15 @@ const Sidebar = () => {
                 >
                   <ListChecks size={20} />
                   <span>Playbook</span>
+                </NavLink>
+              </li>
+              <li>
+                <NavLink 
+                  to="/classroom" 
+                  style={({ isActive }) => isActive ? { ...styles.navLink, ...styles.navLinkActive } : styles.navLink}
+                >
+                  <GraduationCap size={20} />
+                  <span>Classroom</span>
                 </NavLink>
               </li>
               <li>

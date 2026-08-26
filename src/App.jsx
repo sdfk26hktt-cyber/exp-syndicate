@@ -12,6 +12,8 @@ import CommunityFeed from './components/CommunityFeed';
 import FullCalendar from './components/FullCalendar';
 import TeamPasswords from './components/TeamPasswords';
 import Directory from './components/Directory';
+import ClassroomHub from './components/Classroom/ClassroomHub';
+import CoursePlayer from './components/Classroom/CoursePlayer';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AgentProvider } from './context/AgentContext';
 import { CommunityProvider } from './context/CommunityContext';
@@ -197,6 +199,36 @@ function App() {
                   <ProtectedRoute>
                     <AppLayout>
                       <FullCalendar />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/classroom" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <ClassroomHub />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/classroom/:courseId" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <CoursePlayer />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/classroom/:courseId/:lessonId" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <CoursePlayer />
                     </AppLayout>
                   </ProtectedRoute>
                 } 

@@ -7,6 +7,7 @@ import {
   getLevelInfo, 
   getPhaseUnlockStatus 
 } from '../utils/gamification';
+import { DEFAULT_COURSES } from '../utils/classroomDefaults';
 
 const AgentContext = createContext();
 
@@ -209,6 +210,9 @@ export const AgentProvider = ({ children }) => {
     phaseUnlockLevels: DEFAULT_PHASE_UNLOCK_LEVELS
   });
 
+  const [courses, setCourses] = useState(DEFAULT_COURSES);
+  const [agentClassroomProgress, setAgentClassroomProgress] = useState({});
+
   const defaultProfile = {
     phone: '',
     altPhone: '',
@@ -319,12 +323,41 @@ export const AgentProvider = ({ children }) => {
     }
   };
 
+  const loadCourses = async () => {
+    try {
+      const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'classroom_courses').single();
+      if (!error && data?.data && Array.isArray(data.data)) {
+        setCourses(data.data);
+        localStorage.setItem('mockClassroomCourses', JSON.stringify(data.data));
+        return data.data;
+      } else if (error && error.code === 'PGRST116') {
+        await supabase.from('global_settings').insert([{ id: 'classroom_courses', data: DEFAULT_COURSES }]);
+        setCourses(DEFAULT_COURSES);
+        return DEFAULT_COURSES;
+      }
+    } catch (e) {
+      console.log('Classroom courses settings table lookup fallback:', e);
+    }
+    const saved = localStorage.getItem('mockClassroomCourses');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setCourses(parsed);
+        return parsed;
+      } catch (err) {
+        console.error('Error parsing mockClassroomCourses:', err);
+      }
+    }
+    return DEFAULT_COURSES;
+  };
+
   useEffect(() => {
     const init = async () => {
       const currentPlaybook = await loadGlobalPlaybooks();
       const db = await loadAgents();
       await loadGamificationSettings();
       await loadXpEvents();
+      await loadCourses();
       
       const settings = JSON.parse(localStorage.getItem('mockAdminSettings'));
       if (settings) setAdminSettings(settings);
@@ -332,6 +365,21 @@ export const AgentProvider = ({ children }) => {
       if (currentUser?.role === 'agent') {
         const myEmail = (currentUser.email || currentUser.id || '').toLowerCase();
         const myData = db.find(a => a.id?.toLowerCase() === myEmail);
+
+        // Load classroom progress
+        const savedProgressKey = `mockClassroomProgress_${myEmail}`;
+        const localProg = localStorage.getItem(savedProgressKey);
+        if (myData?.classroom_progress && typeof myData.classroom_progress === 'object') {
+          setAgentClassroomProgress(myData.classroom_progress);
+        } else if (localProg) {
+          try {
+            setAgentClassroomProgress(JSON.parse(localProg));
+          } catch (e) {
+            setAgentClassroomProgress({});
+          }
+        } else {
+          setAgentClassroomProgress({});
+        }
         
         if (myData) {
           const savedPhases = myData.phases || currentPlaybook;
@@ -661,6 +709,67 @@ export const AgentProvider = ({ children }) => {
     await supabase.from('global_settings').upsert([{ id: 'global_playbook', data: newPlaybook }]);
   };
 
+  const toggleLessonCompletion = async (courseId, lessonId, xpAmount = 25, courseTitle = '', lessonTitle = '') => {
+    if (!currentUser) return;
+    const agentId = (currentAgentData?.id || currentUser.email || currentUser.id || '').toLowerCase();
+    const currentCompleted = agentClassroomProgress[courseId] || [];
+    const isCompleted = currentCompleted.includes(lessonId);
+
+    let updatedCompleted;
+    let xpChange;
+
+    if (isCompleted) {
+      // Uncomplete
+      updatedCompleted = currentCompleted.filter(id => id !== lessonId);
+      xpChange = -xpAmount;
+    } else {
+      // Complete
+      updatedCompleted = [...currentCompleted, lessonId];
+      xpChange = xpAmount;
+    }
+
+    const updatedProgress = {
+      ...agentClassroomProgress,
+      [courseId]: updatedCompleted
+    };
+
+    setAgentClassroomProgress(updatedProgress);
+    localStorage.setItem(`mockClassroomProgress_${agentId}`, JSON.stringify(updatedProgress));
+
+    // Record XP event
+    if (xpChange !== 0) {
+      const newXp = Math.max(0, xp + xpChange);
+      setXp(newXp);
+      const eventType = xpChange > 0 ? 'classroom_lesson_completed' : 'classroom_lesson_uncompleted';
+      await recordXpEvent(
+        agentId,
+        xpChange,
+        eventType,
+        lessonId,
+        { courseId, courseTitle, lessonTitle }
+      );
+    }
+
+    // Persist to Supabase agents record if possible
+    try {
+      await supabase.from('agents').update({
+        classroom_progress: updatedProgress
+      }).eq('id', agentId);
+    } catch (err) {
+      console.log('Error updating agent classroom_progress:', err);
+    }
+  };
+
+  const updateGlobalCourses = async (newCourses) => {
+    setCourses(newCourses);
+    localStorage.setItem('mockClassroomCourses', JSON.stringify(newCourses));
+    try {
+      await supabase.from('global_settings').upsert([{ id: 'classroom_courses', data: newCourses }]);
+    } catch (err) {
+      console.log('Error saving classroom courses to Supabase:', err);
+    }
+  };
+
   return (
     <AgentContext.Provider value={{ 
       agents, 
@@ -669,10 +778,15 @@ export const AgentProvider = ({ children }) => {
       xp, 
       xpEvents,
       gamificationSettings,
+      courses,
+      agentClassroomProgress,
       currentAgentData, 
       adminSettings, 
       toggleItem, 
       updateTaskStep, 
+      toggleLessonCompletion,
+      updateGlobalCourses,
+      loadCourses,
       getRank, 
       getLevel,
       getPhaseStatus,

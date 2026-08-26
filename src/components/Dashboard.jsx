@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Phone, Mail, Star, Quote, Calendar, Users, FolderOpen, ChevronRight, Lock } from 'lucide-react';
+import { ArrowRight, Phone, Mail, Star, Quote, Calendar, Users, FolderOpen, ChevronRight, Lock, GraduationCap } from 'lucide-react';
 import BadgeList from './Gamification/BadgeList';
 import LevelBadge from './Gamification/LevelBadge';
 import { Link, useNavigate } from 'react-router-dom';
@@ -274,8 +274,20 @@ const Dashboard = () => {
             <div style={styles.supportHint}>
               "Call or text your sponsor anytime. Don't sit stuck."
             </div>
+
+            <Link to="/classroom" className="card mt-4" style={{backgroundColor: 'var(--color-primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', textDecoration: 'none', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0, 161, 224, 0.25)'}}>
+              <div className="flex items-center gap-3">
+                <GraduationCap size={24} color="white" />
+                <div>
+                  <h3 className="m-0 text-white font-semibold text-sm">Classroom Training</h3>
+                  <p className="m-0 text-xs opacity-90 mt-0.5">Step-by-step masterclasses & XP</p>
+                </div>
+              </div>
+              <ChevronRight size={18} color="white" />
+            </Link>
+
             {agentStatus !== 'onboarding' && (
-              <Link to="/resources" className="card mt-6" style={{backgroundColor: 'var(--color-dark-navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem', textDecoration: 'none', borderRadius: '8px'}}>
+              <Link to="/resources" className="card mt-3" style={{backgroundColor: 'var(--color-dark-navy)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem', textDecoration: 'none', borderRadius: '8px'}}>
                 <div className="flex items-center gap-3">
                   <FolderOpen size={24} color="var(--color-accent)" />
                   <div>
