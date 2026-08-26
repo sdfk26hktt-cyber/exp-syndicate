@@ -473,7 +473,7 @@ export const AgentProvider = ({ children }) => {
 
     // Persist to Supabase
     try {
-      await supabase.from('agents').update({ xp: newTotalXp }).eq('id', agentId);
+      await supabase.from('agents').update({ xp: newTotalXp }).ilike('id', agentId);
       await supabase.from('xp_events').insert([newEvent]);
     } catch (err) {
       console.log('Error updating database for XP event:', err);
@@ -551,7 +551,7 @@ export const AgentProvider = ({ children }) => {
       );
     }
 
-    await supabase.from('agents').update({ phases: newPhases, xp: newXp }).eq('id', currentAgentData.id);
+    await supabase.from('agents').update({ phases: newPhases, xp: newXp }).ilike('id', currentAgentData.id);
     loadAgents();
   };
 
@@ -574,7 +574,7 @@ export const AgentProvider = ({ children }) => {
     });
 
     setPhases(newPhases);
-    await supabase.from('agents').update({ phases: newPhases }).eq('id', currentAgentData.id);
+    await supabase.from('agents').update({ phases: newPhases }).ilike('id', currentAgentData.id);
     loadAgents();
   };
 
@@ -651,7 +651,7 @@ export const AgentProvider = ({ children }) => {
     
     const { data } = await supabase.from('agents')
       .update({ name: updatedName, profile: updatedProfile })
-      .eq('id', currentAgentData.id)
+      .ilike('id', currentAgentData.id)
       .select()
       .single();
       
@@ -664,7 +664,7 @@ export const AgentProvider = ({ children }) => {
   const adminUpdateAgent = async (agentId, newName, profileData) => {
     if (!currentUser || currentUser.role !== 'admin') return;
     
-    const targetAgent = agents.find(a => a.id === agentId);
+    const targetAgent = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
     if (!targetAgent) return;
     
     const updatedProfile = { ...(targetAgent.profile || {}), ...profileData };
@@ -672,33 +672,33 @@ export const AgentProvider = ({ children }) => {
     
     await supabase.from('agents')
       .update({ name: updatedName, profile: updatedProfile })
-      .eq('id', agentId);
+      .ilike('id', agentId);
       
-    if (currentAgentData?.id === agentId) {
+    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
       setCurrentAgentData({ ...currentAgentData, name: updatedName, profile: updatedProfile });
     }
     loadAgents();
   };
 
   const updateAgentStatus = async (agentId, newStatus) => {
-    await supabase.from('agents').update({ status: newStatus }).eq('id', agentId);
-    if (currentAgentData?.id === agentId) {
+    await supabase.from('agents').update({ status: newStatus }).ilike('id', agentId);
+    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
       setCurrentAgentData({ ...currentAgentData, status: newStatus });
     }
     loadAgents();
   };
 
   const updateAgentPhase = async (agentId, newPhaseId) => {
-    await supabase.from('agents').update({ current_phase: newPhaseId }).eq('id', agentId);
-    if (currentAgentData?.id === agentId) {
+    await supabase.from('agents').update({ current_phase: newPhaseId }).ilike('id', agentId);
+    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
       setCurrentAgentData({ ...currentAgentData, current_phase: newPhaseId });
     }
     loadAgents();
   };
 
   const deleteAgent = async (agentId) => {
-    await supabase.from('agents').delete().eq('id', agentId);
-    if (currentAgentData?.id === agentId) {
+    await supabase.from('agents').delete().ilike('id', agentId);
+    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
       setCurrentAgentData(null);
     }
     loadAgents();
@@ -754,7 +754,7 @@ export const AgentProvider = ({ children }) => {
     try {
       await supabase.from('agents').update({
         classroom_progress: updatedProgress
-      }).eq('id', agentId);
+      }).ilike('id', agentId);
     } catch (err) {
       console.log('Error updating agent classroom_progress:', err);
     }
