@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap } from 'lucide-react';
+import { useOpenHouse } from '../context/OpenHouseContext';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -11,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import ErrorBoundary from './ErrorBoundary';
 import PlaybookManager from './PlaybookManager';
 import ClassroomManager from './Classroom/ClassroomManager';
+import OpenHouseWeeklyReport from './OpenHouses/OpenHouseWeeklyReport';
 import AgentAutocomplete from './AgentAutocomplete';
 import LevelBadge from './Gamification/LevelBadge';
 import { DEFAULT_LEVEL_THRESHOLDS, DEFAULT_PHASE_UNLOCK_LEVELS } from '../utils/gamification';
@@ -246,6 +248,61 @@ const AdminDashboard = () => {
 
   const pendingEvents = events.filter(e => e.status === 'pending');
   
+  // Open House Coordination State
+  const { 
+    listings, 
+    bookings, 
+    pendingApprovals, 
+    approveBooking, 
+    rejectBooking, 
+    syncSisuListings, 
+    isSyncing, 
+    lastSyncedAt, 
+    weeklyReportConfig, 
+    updateWeeklyReportConfig, 
+    sendWeeklyReportPrompt 
+  } = useOpenHouse();
+  
+  const [approvingBookingId, setApprovingBookingId] = useState(null);
+  const [isSendingReportPrompt, setIsSendingReportPrompt] = useState(false);
+  const [showOpenHouseReportModal, setShowOpenHouseReportModal] = useState(false);
+
+  const handleApproveOpenHouse = async (bookingId) => {
+    setApprovingBookingId(bookingId);
+    try {
+      await approveBooking(bookingId, userName);
+      setActionSuccessMsg("✅ Open House approved! Calendar appointment created in Follow Up Boss & confirmation texted via LinqApp.");
+      setTimeout(() => setActionSuccessMsg(''), 5000);
+    } catch (e) {
+      alert("Error approving booking: " + e.message);
+    } finally {
+      setApprovingBookingId(null);
+    }
+  };
+
+  const handleRejectOpenHouse = async (bookingId) => {
+    const reason = prompt("Enter reason for rejection (optional):", "Schedule adjustment / conflicts");
+    if (reason !== null) {
+      await rejectBooking(bookingId, reason, userName);
+      setActionSuccessMsg("Open House request declined.");
+      setTimeout(() => setActionSuccessMsg(''), 4000);
+    }
+  };
+
+  const handleSisuSync = async () => {
+    const res = await syncSisuListings();
+    setActionSuccessMsg(`Sisu listings refreshed (${res.count || listings.length} active listings).`);
+    setTimeout(() => setActionSuccessMsg(''), 4000);
+  };
+
+  const handleTriggerReportNotification = async () => {
+    setIsSendingReportPrompt(true);
+    await sendWeeklyReportPrompt();
+    setIsSendingReportPrompt(false);
+    setActionSuccessMsg("📱 LinqApp review prompt sent to coordinator phone.");
+    setTimeout(() => setActionSuccessMsg(''), 4000);
+  };
+
   const approvedEvents = events.filter(e => {
     if (e.status !== 'approved') return false;
     if (eventFilterMonth === 'all' && eventFilterYear === 'all') return true;
@@ -1001,6 +1058,195 @@ const AdminDashboard = () => {
       {activeTab === 'community' && (
         <ErrorBoundary>
         <>
+          {showOpenHouseReportModal ? (
+            <OpenHouseWeeklyReport onClose={() => setShowOpenHouseReportModal(false)} />
+          ) : (
+            <>
+              {/* Open House Approvals Card */}
+              {pendingApprovals.length > 0 && (
+                <div className="card mb-6" style={{borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.05)'}}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h2 style={{marginTop: 0, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-dark-navy)'}}>
+                      <Home size={20} style={{ color: 'var(--color-success)' }} /> Open House Approvals ({pendingApprovals.length})
+                    </h2>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                      Approving auto-creates FUB event with seller & texts hosting agent via LinqApp
+                    </span>
+                  </div>
+                  <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem'}}>
+                    {pendingApprovals.map(booking => {
+                      const listing = listings.find(l => l.id === booking.listing_id);
+                      return (
+                        <div key={booking.id} style={styles.pendingEventCard}>
+                          <div style={{flexGrow: 1}}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                              <span style={{
+                                backgroundColor: 'var(--color-dark-navy)',
+                                color: 'white',
+                                padding: '0.2rem 0.5rem',
+                                borderRadius: '4px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700
+                              }}>
+                                {listing?.price_formatted || 'Listing'}
+                              </span>
+                              <h4 style={{margin: 0, color: 'var(--color-dark-navy)', fontSize: '1.05rem'}}>
+                                {listing?.address || 'Listing Address'}
+                              </h4>
+                            </div>
+                            <p style={{margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--color-text-muted)'}}>
+                              📅 <strong>{booking.date}</strong> at <strong>{booking.start_time} - {booking.end_time}</strong>
+                            </p>
+                            {booking.notes && (
+                              <p style={{margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--color-text-main)', fontStyle: 'italic'}}>
+                                📝 "{booking.notes}"
+                              </p>
+                            )}
+                            <div style={{marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1.25rem', flexWrap: 'wrap'}}>
+                              <span><strong>Requested By:</strong> {booking.agent_name} ({booking.agent_phone || booking.agent_id})</span>
+                              <span><strong>Listing Agent:</strong> {listing?.listing_agent_name || 'Syndicate'}</span>
+                              {listing?.seller_contact_name && <span><strong>Seller:</strong> {listing.seller_contact_name}</span>}
+                            </div>
+                          </div>
+                          <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                            <button 
+                              onClick={() => handleApproveOpenHouse(booking.id)} 
+                              disabled={approvingBookingId === booking.id}
+                              className="btn-primary" 
+                              style={{backgroundColor: 'var(--color-success)', padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem'}}
+                            >
+                              <Check size={16} /> {approvingBookingId === booking.id ? 'Approving...' : 'Approve & Sync FUB'}
+                            </button>
+                            <button 
+                              onClick={() => handleRejectOpenHouse(booking.id)} 
+                              className="btn-primary" 
+                              style={{backgroundColor: 'var(--color-error)', padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem'}}
+                            >
+                              <X size={16} /> Reject
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Sisu Inventory & Weekly Report Coordination Card */}
+              <div className="card mb-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Building size={20} style={{ color: 'var(--color-primary)' }} />
+                    <h3 style={{ margin: 0, color: 'var(--color-dark-navy)', fontSize: '1.15rem', fontWeight: 700 }}>
+                      Open House Coordination & Sisu Inventory
+                    </h3>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <button
+                      onClick={() => setShowOpenHouseReportModal(true)}
+                      style={{
+                        padding: '0.5rem 0.85rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--color-primary)',
+                        backgroundColor: 'rgba(0, 161, 224, 0.08)',
+                        color: 'var(--color-primary)',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      <FileText size={15} /> View Master Schedule
+                    </button>
+
+                    <button
+                      onClick={handleSisuSync}
+                      disabled={isSyncing}
+                      className="btn-primary"
+                      style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+                    >
+                      <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
+                      {isSyncing ? 'Syncing Sisu...' : 'Refresh Listings from Sisu'}
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                  {/* Sisu Inventory Snapshot */}
+                  <div style={{ backgroundColor: 'var(--color-background)', padding: '1rem', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 700, marginBottom: '0.5rem' }}>
+                      Active Sisu Listings ({listings.length})
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--color-text-main)' }}>
+                      <div>Last Synced: <strong>{new Date(lastSyncedAt).toLocaleString()}</strong></div>
+                      <div style={{ marginTop: '0.35rem', color: 'var(--color-text-muted)' }}>
+                        Inventory is synced to all syndicate agents for weekend open house bookings.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Weekly Report Deadline & LinqApp Config */}
+                  <div style={{ backgroundColor: 'var(--color-background)', padding: '1rem', borderRadius: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+                        Weekly Report Deadline (LinqApp Prompt)
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <select
+                        value={weeklyReportConfig.deadline_day_of_week}
+                        onChange={(e) => updateWeeklyReportConfig({ deadline_day_of_week: Number(e.target.value) })}
+                        style={{ ...styles.input, width: 'auto', padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                      >
+                        <option value={1}>Monday</option>
+                        <option value={2}>Tuesday</option>
+                        <option value={3}>Wednesday</option>
+                        <option value={4}>Thursday</option>
+                        <option value={5}>Friday</option>
+                        <option value={6}>Saturday</option>
+                        <option value={0}>Sunday</option>
+                      </select>
+
+                      <input
+                        type="time"
+                        value={weeklyReportConfig.deadline_time}
+                        onChange={(e) => updateWeeklyReportConfig({ deadline_time: e.target.value })}
+                        style={{ ...styles.input, width: 'auto', padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                      />
+
+                      <button
+                        onClick={handleTriggerReportNotification}
+                        disabled={isSendingReportPrompt}
+                        title="Send LinqApp SMS review prompt to coordinator"
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          borderRadius: '6px',
+                          border: '1px solid var(--color-border)',
+                          backgroundColor: 'var(--color-surface)',
+                          color: 'var(--color-text-main)',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isSendingReportPrompt ? 'Sending...' : '📱 Trigger Test SMS Prompt'}
+                      </button>
+                    </div>
+
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                      Coordinator Phone: <strong>{weeklyReportConfig.coordinator_phone || '(915) 256-6989'}</strong>
+                      {weeklyReportConfig.last_report_sent_at && (
+                        <span style={{ marginLeft: '0.5rem' }}>• Last Prompt: {new Date(weeklyReportConfig.last_report_sent_at).toLocaleDateString()}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
           {pendingEvents.length > 0 && (
             <div className="card mb-6" style={{borderColor: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.05)'}}>
               <h2 style={{marginTop: 0, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-dark-navy)'}}>
@@ -1474,6 +1720,8 @@ const AdminDashboard = () => {
             </form>
           </div>
           </div>
+          </>
+          )}
         </>
         </ErrorBoundary>
       )}

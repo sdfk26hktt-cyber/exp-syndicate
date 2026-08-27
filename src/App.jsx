@@ -14,9 +14,12 @@ import TeamPasswords from './components/TeamPasswords';
 import Directory from './components/Directory';
 import ClassroomHub from './components/Classroom/ClassroomHub';
 import CoursePlayer from './components/Classroom/CoursePlayer';
+import OpenHouseHub from './components/OpenHouses/OpenHouseHub';
+import OpenHouseWeeklyReport from './components/OpenHouses/OpenHouseWeeklyReport';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AgentProvider } from './context/AgentContext';
 import { CommunityProvider } from './context/CommunityContext';
+import { OpenHouseProvider } from './context/OpenHouseContext';
 import ExpLinksModal from './components/ExpLinksModal';
 
 const ProtectedRoute = ({ children, role }) => {
@@ -108,156 +111,178 @@ function App() {
     <AuthProvider>
       <AgentProvider>
         <CommunityProvider>
-          <Router>
-            <Routes>
-              <Route path="/login" element={<SignIn />} />
-              
-              {/* Admin Routes */}
-              <Route 
-                path="/admin" 
-                element={
-                  <ProtectedRoute role="admin">
-                    <AppLayout>
-                      <AdminDashboard />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/passwords" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <TeamPasswords />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
+          <OpenHouseProvider>
+            <Router>
+              <Routes>
+                <Route path="/login" element={<SignIn />} />
+                
+                {/* Admin Routes */}
+                <Route 
+                  path="/admin" 
+                  element={
+                    <ProtectedRoute role="admin">
+                      <AppLayout>
+                        <AdminDashboard />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/passwords" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <TeamPasswords />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
 
-              {/* Agent Routes */}
-              <Route 
-                path="/" 
-                element={
-                  <ProtectedRoute role="agent">
-                    <AppLayout>
-                      <Dashboard />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/checklist" 
-                element={
-                  <ProtectedRoute role="agent">
-                    <AppLayout>
-                      <Checklist />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/resources" 
-                element={
-                  <ProtectedRoute role="agent">
-                    <AppLayout>
-                      <ResourceBoard />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/achievements" 
-                element={
-                  <ProtectedRoute role="agent">
-                    <AppLayout>
-                      <div className="animate-fade-in">
-                        <h1 className="text-2xl font-semibold mb-2">Achievements</h1>
-                        <p className="text-muted mb-6">Track your onboarding milestones and rewards.</p>
-                        <div className="card">
-                          <p>Full achievements view coming soon...</p>
+                {/* Agent Routes */}
+                <Route 
+                  path="/" 
+                  element={
+                    <ProtectedRoute role="agent">
+                      <AppLayout>
+                        <Dashboard />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/checklist" 
+                  element={
+                    <ProtectedRoute role="agent">
+                      <AppLayout>
+                        <Checklist />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/resources" 
+                  element={
+                    <ProtectedRoute role="agent">
+                      <AppLayout>
+                        <ResourceBoard />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/achievements" 
+                  element={
+                    <ProtectedRoute role="agent">
+                      <AppLayout>
+                        <div className="animate-fade-in">
+                          <h1 className="text-2xl font-semibold mb-2">Achievements</h1>
+                          <p className="text-muted mb-6">Track your onboarding milestones and rewards.</p>
+                          <div className="card">
+                            <p>Full achievements view coming soon...</p>
+                          </div>
                         </div>
-                      </div>
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
 
-              {/* Shared Protected Routes (Accessible by Admin and Agent) */}
-              <Route 
-                path="/community" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <CommunityFeed />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/calendar" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <FullCalendar />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/classroom" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ClassroomHub />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/classroom/:courseId" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <CoursePlayer />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/classroom/:courseId/:lessonId" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <CoursePlayer />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/directory" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Directory />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/settings"  
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Settings />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
+                {/* Shared Protected Routes (Accessible by Admin and Agent) */}
+                <Route 
+                  path="/open-houses" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <OpenHouseHub />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/open-house-report" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <OpenHouseWeeklyReport />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/community" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <CommunityFeed />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/calendar" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <FullCalendar />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/classroom" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <ClassroomHub />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/classroom/:courseId" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <CoursePlayer />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/classroom/:courseId/:lessonId" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <CoursePlayer />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/directory" 
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <Directory />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/settings"  
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <Settings />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  } 
+                />
 
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Router>
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Router>
+          </OpenHouseProvider>
         </CommunityProvider>
       </AgentProvider>
     </AuthProvider>

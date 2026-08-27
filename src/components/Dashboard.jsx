@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Phone, Mail, Star, Quote, Calendar, Users, FolderOpen, ChevronRight, Lock, GraduationCap } from 'lucide-react';
+import { ArrowRight, Phone, Mail, Star, Quote, Calendar, Users, FolderOpen, ChevronRight, Lock, GraduationCap, Building } from 'lucide-react';
 import BadgeList from './Gamification/BadgeList';
 import LevelBadge from './Gamification/LevelBadge';
 import { Link, useNavigate } from 'react-router-dom';
@@ -281,6 +281,17 @@ const Dashboard = () => {
                 <div>
                   <h3 className="m-0 text-white font-semibold text-sm">Classroom Training</h3>
                   <p className="m-0 text-xs opacity-90 mt-0.5">Step-by-step masterclasses & XP</p>
+                </div>
+              </div>
+              <ChevronRight size={18} color="white" />
+            </Link>
+
+            <Link to="/open-houses" className="card mt-3" style={{backgroundColor: '#0f766e', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', textDecoration: 'none', borderRadius: '8px', boxShadow: '0 4px 12px rgba(15, 118, 110, 0.25)'}}>
+              <div className="flex items-center gap-3">
+                <Building size={24} color="white" />
+                <div>
+                  <h3 className="m-0 text-white font-semibold text-sm">Open Houses</h3>
+                  <p className="m-0 text-xs opacity-90 mt-0.5">Book active listings for the weekend</p>
                 </div>
               </div>
               <ChevronRight size={18} color="white" />
