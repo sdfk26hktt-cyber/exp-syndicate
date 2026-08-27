@@ -501,6 +501,107 @@ const AdminDashboard = () => {
     fetchResources();
   }, []);
 
+  const renderOpenHouseApprovalsCard = () => {
+    if (!pendingApprovals || pendingApprovals.length === 0) return null;
+
+    return (
+      <div className="card mb-6" style={{borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.05)', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.1)'}}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <h2 style={{marginTop: 0, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-dark-navy)', fontSize: '1.2rem', fontWeight: 700}}>
+            <Home size={22} style={{ color: 'var(--color-success)' }} /> Action Required: Open House Approvals ({pendingApprovals.length})
+          </h2>
+          <span style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', backgroundColor: 'white', padding: '0.25rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+            Approving auto-creates FUB event with seller & texts hosting agent via LinqApp
+          </span>
+        </div>
+        <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem'}}>
+          {pendingApprovals.map(booking => {
+            const listing = listings.find(l => l.id === booking.listing_id || l.sisu_listing_id === booking.listing_id);
+            const displayAddress = listing?.address || booking.listing_address || 'Listing Address';
+            const displayPrice = listing?.price_formatted || booking.listing_price || 'Listing';
+            const displayListingAgent = listing?.listing_agent_name || booking.listing_agent_name || 'Syndicate';
+            const leadId = listing?.seller_contact_id || booking.seller_contact_id;
+            const sellerName = listing?.seller_contact_name || booking.seller_contact_name;
+
+            return (
+              <div key={booking.id} style={styles.pendingEventCard}>
+                <div style={{flexGrow: 1}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <span style={{
+                      backgroundColor: 'var(--color-dark-navy)',
+                      color: 'white',
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '4px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700
+                    }}>
+                      {displayPrice}
+                    </span>
+                    <h4 style={{margin: 0, color: 'var(--color-dark-navy)', fontSize: '1.05rem'}}>
+                      {displayAddress}
+                    </h4>
+                  </div>
+                  <p style={{margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--color-text-muted)'}}>
+                    📅 <strong>{booking.date}</strong> at <strong>{booking.start_time} - {booking.end_time}</strong>
+                  </p>
+                  {booking.notes && (
+                    <p style={{margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--color-text-main)', fontStyle: 'italic'}}>
+                      📝 "{booking.notes}"
+                    </p>
+                  )}
+                  <div style={{marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center'}}>
+                    <span><strong>Requested By:</strong> {booking.agent_name} ({booking.agent_phone || booking.agent_id})</span>
+                    <span><strong>Listing Agent:</strong> {displayListingAgent}</span>
+                    {sellerName && <span><strong>Seller:</strong> {sellerName}</span>}
+                    {leadId && (
+                      <a 
+                        href={`https://brianburds.followupboss.com/2/people/view/${leadId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          color: 'var(--color-primary)',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          backgroundColor: 'rgba(0, 161, 224, 0.1)',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(0, 161, 224, 0.25)'
+                        }}
+                        title={`Open FUB Lead #${leadId}`}
+                      >
+                        👤 View Lead in FUB ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                  <button 
+                    onClick={() => handleApproveOpenHouse(booking.id)} 
+                    disabled={approvingBookingId === booking.id}
+                    className="btn-primary" 
+                    style={{backgroundColor: 'var(--color-success)', padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem'}}
+                  >
+                    <Check size={16} /> {approvingBookingId === booking.id ? 'Approving...' : 'Approve & Sync FUB'}
+                  </button>
+                  <button 
+                    onClick={() => handleRejectOpenHouse(booking.id)} 
+                    className="btn-primary" 
+                    style={{backgroundColor: 'var(--color-error)', padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem'}}
+                  >
+                    <X size={16} /> Reject
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const handleAddAgent = async (e) => {
     e.preventDefault();
     const normalizedEmail = newAgentEmail.toLowerCase().trim();
@@ -654,7 +755,20 @@ const AdminDashboard = () => {
           style={{...styles.tabBtn, ...(activeTab === 'community' ? styles.activeTab : {})}}
           onClick={() => setActiveTab('community')}
         >
-          Community Manager
+          Community & Open Houses
+          {pendingApprovals.length > 0 && (
+            <span style={{
+              marginLeft: '0.5rem',
+              backgroundColor: '#10b981',
+              color: 'white',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              padding: '0.15rem 0.5rem',
+              borderRadius: '10px'
+            }}>
+              {pendingApprovals.length}
+            </span>
+          )}
         </button>
         <button 
           style={{...styles.tabBtn, ...(activeTab === 'calendar' ? styles.activeTab : {})}}
@@ -701,6 +815,8 @@ const AdminDashboard = () => {
 
       {activeTab === 'pipeline' && (
         <>
+          {renderOpenHouseApprovalsCard()}
+
           <div className="flex justify-end mb-4">
             <button className="btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
               <UserPlus size={18} />
@@ -1235,102 +1351,7 @@ const AdminDashboard = () => {
           ) : (
             <>
               {/* Open House Approvals Card */}
-              {pendingApprovals.length > 0 && (
-                <div className="card mb-6" style={{borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.05)'}}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-                    <h2 style={{marginTop: 0, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-dark-navy)'}}>
-                      <Home size={20} style={{ color: 'var(--color-success)' }} /> Open House Approvals ({pendingApprovals.length})
-                    </h2>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                      Approving auto-creates FUB event with seller & texts hosting agent via LinqApp
-                    </span>
-                  </div>
-                  <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem'}}>
-                    {pendingApprovals.map(booking => {
-                      const listing = listings.find(l => l.id === booking.listing_id || l.sisu_listing_id === booking.listing_id);
-                      const displayAddress = listing?.address || booking.listing_address || 'Listing Address';
-                      const displayPrice = listing?.price_formatted || booking.listing_price || 'Listing';
-                      const displayListingAgent = listing?.listing_agent_name || booking.listing_agent_name || 'Syndicate';
-                      const leadId = listing?.seller_contact_id || booking.seller_contact_id;
-                      const sellerName = listing?.seller_contact_name || booking.seller_contact_name;
-
-                      return (
-                        <div key={booking.id} style={styles.pendingEventCard}>
-                          <div style={{flexGrow: 1}}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                              <span style={{
-                                backgroundColor: 'var(--color-dark-navy)',
-                                color: 'white',
-                                padding: '0.2rem 0.5rem',
-                                borderRadius: '4px',
-                                fontSize: '0.72rem',
-                                fontWeight: 700
-                              }}>
-                                {displayPrice}
-                              </span>
-                              <h4 style={{margin: 0, color: 'var(--color-dark-navy)', fontSize: '1.05rem'}}>
-                                {displayAddress}
-                              </h4>
-                            </div>
-                            <p style={{margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--color-text-muted)'}}>
-                              📅 <strong>{booking.date}</strong> at <strong>{booking.start_time} - {booking.end_time}</strong>
-                            </p>
-                            {booking.notes && (
-                              <p style={{margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--color-text-main)', fontStyle: 'italic'}}>
-                                📝 "{booking.notes}"
-                              </p>
-                            )}
-                            <div style={{marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center'}}>
-                              <span><strong>Requested By:</strong> {booking.agent_name} ({booking.agent_phone || booking.agent_id})</span>
-                              <span><strong>Listing Agent:</strong> {displayListingAgent}</span>
-                              {sellerName && <span><strong>Seller:</strong> {sellerName}</span>}
-                              {leadId && (
-                                <a 
-                                  href={`https://brianburds.followupboss.com/2/people/view/${leadId}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem',
-                                    color: 'var(--color-primary)',
-                                    fontWeight: 700,
-                                    textDecoration: 'none',
-                                    backgroundColor: 'rgba(0, 161, 224, 0.1)',
-                                    padding: '0.2rem 0.55rem',
-                                    borderRadius: '4px',
-                                    border: '1px solid rgba(0, 161, 224, 0.25)'
-                                  }}
-                                  title={`Open FUB Lead #${leadId}`}
-                                >
-                                  👤 View Lead in FUB ↗
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                          <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
-                            <button 
-                              onClick={() => handleApproveOpenHouse(booking.id)} 
-                              disabled={approvingBookingId === booking.id}
-                              className="btn-primary" 
-                              style={{backgroundColor: 'var(--color-success)', padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem'}}
-                            >
-                              <Check size={16} /> {approvingBookingId === booking.id ? 'Approving...' : 'Approve & Sync FUB'}
-                            </button>
-                            <button 
-                              onClick={() => handleRejectOpenHouse(booking.id)} 
-                              className="btn-primary" 
-                              style={{backgroundColor: 'var(--color-error)', padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem'}}
-                            >
-                              <X size={16} /> Reject
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              {renderOpenHouseApprovalsCard()}
 
               {/* Sisu Inventory & Weekly Report Coordination Card */}
               <div className="card mb-6" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>

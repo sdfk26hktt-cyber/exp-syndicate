@@ -5,7 +5,24 @@ import './index.css'
 import App from './App.jsx'
 
 // Auto-register service worker and immediately activate updates for all clients
-registerSW({ immediate: true })
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    updateSW(true);
+  },
+  onOfflineReady() {
+    console.log('App ready to work offline');
+  }
+});
+
+// Periodically check for updates every 60s while the app is active
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.ready.then(registration => {
+    setInterval(() => {
+      registration.update();
+    }, 60 * 1000);
+  });
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

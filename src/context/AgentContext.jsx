@@ -323,12 +323,15 @@ export const AgentProvider = ({ children }) => {
     }
   };
 
+  const CLASSROOM_CACHE_VERSION = '2026-08-27-v3';
+
   const loadCourses = async () => {
     try {
       const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'classroom_courses').single();
       if (!error && data?.data && Array.isArray(data.data)) {
         setCourses(data.data);
         localStorage.setItem('mockClassroomCourses', JSON.stringify(data.data));
+        localStorage.setItem('classroom_cache_version', CLASSROOM_CACHE_VERSION);
         return data.data;
       } else if (error && error.code === 'PGRST116') {
         await supabase.from('global_settings').insert([{ id: 'classroom_courses', data: DEFAULT_COURSES }]);
@@ -338,15 +341,30 @@ export const AgentProvider = ({ children }) => {
     } catch (e) {
       console.log('Classroom courses settings table lookup fallback:', e);
     }
+
+    // Check version of cached courses
+    const cachedVersion = localStorage.getItem('classroom_cache_version');
     const saved = localStorage.getItem('mockClassroomCourses');
-    if (saved) {
+    
+    if (saved && cachedVersion === CLASSROOM_CACHE_VERSION) {
       try {
         const parsed = JSON.parse(saved);
-        setCourses(parsed);
-        return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCourses(parsed);
+          return parsed;
+        }
       } catch (err) {
         console.error('Error parsing mockClassroomCourses:', err);
       }
+    }
+
+    // Invalidate stale cache and initialize fresh default courses
+    setCourses(DEFAULT_COURSES);
+    try {
+      localStorage.setItem('mockClassroomCourses', JSON.stringify(DEFAULT_COURSES));
+      localStorage.setItem('classroom_cache_version', CLASSROOM_CACHE_VERSION);
+    } catch (e) {
+      console.debug(e);
     }
     return DEFAULT_COURSES;
   };
