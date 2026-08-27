@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAgent } from '../context/AgentContext';
 import { Save, Plus, Edit, Trash2, ChevronDown, ChevronUp, GripVertical, X } from 'lucide-react';
 
@@ -8,11 +8,17 @@ const PlaybookManager = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [expandedPhase, setExpandedPhase] = useState(null);
 
+  useEffect(() => {
+    if (globalPlaybooks && Array.isArray(globalPlaybooks) && globalPlaybooks.length > 0) {
+      setPlaybooks(globalPlaybooks);
+    }
+  }, [globalPlaybooks]);
+
   const handleSave = async () => {
     setIsSaving(true);
     await updateGlobalPlaybooks(playbooks);
     setIsSaving(false);
-    alert('Global Playbook Updated Successfully!');
+    alert('Global Playbook Updated & Saved to Cloud Successfully!');
   };
 
   const addPhase = () => {

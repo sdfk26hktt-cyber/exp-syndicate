@@ -234,34 +234,27 @@ export const AgentProvider = ({ children }) => {
   const loadAgents = async () => {
     const { data, error } = await supabase.from('agents').select('*');
     if (!error && data) {
-      setAgents(data);
-      return data;
+      const realAgents = data.filter(a => !a.id?.startsWith('__SYSTEM_') && a.status !== 'system');
+      setAgents(realAgents);
+      return realAgents;
     }
     return [];
   };
 
   const loadGamificationSettings = async () => {
     try {
-      const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'gamification_settings').single();
-      if (!error && data?.data) {
+      const { data, error } = await supabase.from('agents').select('*').eq('id', '__SYSTEM_CONFIG_GAMIFICATION__').single();
+      if (!error && data?.profile?.gamification) {
         const loaded = {
-          levelThresholds: data.data.levelThresholds || DEFAULT_LEVEL_THRESHOLDS,
-          phaseUnlockLevels: data.data.phaseUnlockLevels || DEFAULT_PHASE_UNLOCK_LEVELS
+          levelThresholds: data.profile.gamification.levelThresholds || DEFAULT_LEVEL_THRESHOLDS,
+          phaseUnlockLevels: data.profile.gamification.phaseUnlockLevels || DEFAULT_PHASE_UNLOCK_LEVELS
         };
         setGamificationSettings(loaded);
         localStorage.setItem('mockGamificationSettings', JSON.stringify(loaded));
         return loaded;
-      } else if (error && error.code === 'PGRST116') {
-        const defaultSettings = {
-          levelThresholds: DEFAULT_LEVEL_THRESHOLDS,
-          phaseUnlockLevels: DEFAULT_PHASE_UNLOCK_LEVELS
-        };
-        await supabase.from('global_settings').insert([{ id: 'gamification_settings', data: defaultSettings }]);
-        setGamificationSettings(defaultSettings);
-        return defaultSettings;
       }
     } catch (e) {
-      console.error('Failed to load gamification settings:', e);
+      console.log('Gamification settings lookup fallback:', e);
     }
     
     // Fallback to localStorage
@@ -307,42 +300,44 @@ export const AgentProvider = ({ children }) => {
 
   const loadGlobalPlaybooks = async () => {
     try {
-      const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'global_playbook').single();
-      if (!error && data?.data) {
-        setGlobalPlaybooks(data.data);
-        return data.data;
-      } else if (error && error.code === 'PGRST116') {
-        await supabase.from('global_settings').insert([{ id: 'global_playbook', data: DEFAULT_PHASES }]);
-        setGlobalPlaybooks(DEFAULT_PHASES);
-        return DEFAULT_PHASES;
+      const { data, error } = await supabase.from('agents').select('*').eq('id', '__SYSTEM_CONFIG_PLAYBOOKS__').single();
+      if (!error && data?.profile?.playbooks && Array.isArray(data.profile.playbooks)) {
+        setGlobalPlaybooks(data.profile.playbooks);
+        return data.profile.playbooks;
       }
-      return DEFAULT_PHASES;
     } catch (e) {
-      console.error(e);
-      return DEFAULT_PHASES;
+      console.log('Global playbooks lookup fallback:', e);
     }
+    return DEFAULT_PHASES;
   };
 
-  const CLASSROOM_CACHE_VERSION = '2026-08-27-v3';
+  const CLASSROOM_CACHE_VERSION = '2026-08-27-v4';
 
   const loadCourses = async () => {
     try {
-      const { data, error } = await supabase.from('global_settings').select('*').eq('id', 'classroom_courses').single();
-      if (!error && data?.data && Array.isArray(data.data)) {
-        setCourses(data.data);
-        localStorage.setItem('mockClassroomCourses', JSON.stringify(data.data));
+      // 1. Fetch from Supabase agents table system config row
+      const { data, error } = await supabase.from('agents').select('*').eq('id', '__SYSTEM_CONFIG_CLASSROOM__').single();
+      if (!error && data?.profile?.courses && Array.isArray(data.profile.courses) && data.profile.courses.length > 0) {
+        setCourses(data.profile.courses);
+        localStorage.setItem('mockClassroomCourses', JSON.stringify(data.profile.courses));
         localStorage.setItem('classroom_cache_version', CLASSROOM_CACHE_VERSION);
-        return data.data;
+        return data.profile.courses;
       } else if (error && error.code === 'PGRST116') {
-        await supabase.from('global_settings').insert([{ id: 'classroom_courses', data: DEFAULT_COURSES }]);
+        // Seed default courses to Supabase
+        await supabase.from('agents').upsert([{
+          id: '__SYSTEM_CONFIG_CLASSROOM__',
+          name: 'Classroom Courses Config',
+          status: 'system',
+          profile: { courses: DEFAULT_COURSES, updated_at: new Date().toISOString() }
+        }]);
         setCourses(DEFAULT_COURSES);
         return DEFAULT_COURSES;
       }
     } catch (e) {
-      console.log('Classroom courses settings table lookup fallback:', e);
+      console.log('Classroom courses cloud lookup fallback:', e);
     }
 
-    // Check version of cached courses
+    // 2. Check cached courses in localStorage
     const cachedVersion = localStorage.getItem('classroom_cache_version');
     const saved = localStorage.getItem('mockClassroomCourses');
     
@@ -358,7 +353,7 @@ export const AgentProvider = ({ children }) => {
       }
     }
 
-    // Invalidate stale cache and initialize fresh default courses
+    // 3. Fallback to DEFAULT_COURSES
     setCourses(DEFAULT_COURSES);
     try {
       localStorage.setItem('mockClassroomCourses', JSON.stringify(DEFAULT_COURSES));
@@ -387,8 +382,11 @@ export const AgentProvider = ({ children }) => {
         // Load classroom progress
         const savedProgressKey = `mockClassroomProgress_${myEmail}`;
         const localProg = localStorage.getItem(savedProgressKey);
-        if (myData?.classroom_progress && typeof myData.classroom_progress === 'object') {
-          setAgentClassroomProgress(myData.classroom_progress);
+        const remoteProgress = myData?.profile?.classroom_progress || (myData?.classroom_progress && typeof myData.classroom_progress === 'object' ? myData.classroom_progress : null);
+        
+        if (remoteProgress) {
+          setAgentClassroomProgress(remoteProgress);
+          localStorage.setItem(savedProgressKey, JSON.stringify(remoteProgress));
         } else if (localProg) {
           try {
             setAgentClassroomProgress(JSON.parse(localProg));
@@ -517,7 +515,12 @@ export const AgentProvider = ({ children }) => {
     localStorage.setItem('mockGamificationSettings', JSON.stringify(updated));
 
     try {
-      await supabase.from('global_settings').upsert([{ id: 'gamification_settings', data: updated }]);
+      await supabase.from('agents').upsert([{
+        id: '__SYSTEM_CONFIG_GAMIFICATION__',
+        name: 'Gamification Settings Config',
+        status: 'system',
+        profile: { gamification: updated, updated_at: new Date().toISOString() }
+      }]);
     } catch (err) {
       console.error('Error saving gamification settings:', err);
     }
@@ -724,7 +727,17 @@ export const AgentProvider = ({ children }) => {
 
   const updateGlobalPlaybooks = async (newPlaybook) => {
     setGlobalPlaybooks(newPlaybook);
-    await supabase.from('global_settings').upsert([{ id: 'global_playbook', data: newPlaybook }]);
+    localStorage.setItem('mockGlobalPlaybooks', JSON.stringify(newPlaybook));
+    try {
+      await supabase.from('agents').upsert([{
+        id: '__SYSTEM_CONFIG_PLAYBOOKS__',
+        name: 'Global Playbooks Config',
+        status: 'system',
+        profile: { playbooks: newPlaybook, updated_at: new Date().toISOString() }
+      }]);
+    } catch (err) {
+      console.error('Error saving global playbooks:', err);
+    }
   };
 
   const toggleLessonCompletion = async (courseId, lessonId, xpAmount = 25, courseTitle = '', lessonTitle = '') => {
@@ -768,10 +781,15 @@ export const AgentProvider = ({ children }) => {
       );
     }
 
-    // Persist to Supabase agents record if possible
+    // Persist to Supabase agents record inside profile JSONB
     try {
-      await supabase.from('agents').update({
+      const { data: currentAgent } = await supabase.from('agents').select('profile').ilike('id', agentId).single();
+      const updatedProfile = {
+        ...(currentAgent?.profile || {}),
         classroom_progress: updatedProgress
+      };
+      await supabase.from('agents').update({
+        profile: updatedProfile
       }).ilike('id', agentId);
     } catch (err) {
       console.log('Error updating agent classroom_progress:', err);
@@ -782,7 +800,12 @@ export const AgentProvider = ({ children }) => {
     setCourses(newCourses);
     localStorage.setItem('mockClassroomCourses', JSON.stringify(newCourses));
     try {
-      await supabase.from('global_settings').upsert([{ id: 'classroom_courses', data: newCourses }]);
+      await supabase.from('agents').upsert([{
+        id: '__SYSTEM_CONFIG_CLASSROOM__',
+        name: 'Classroom Courses Config',
+        status: 'system',
+        profile: { courses: newCourses, updated_at: new Date().toISOString() }
+      }]);
     } catch (err) {
       console.log('Error saving classroom courses to Supabase:', err);
     }

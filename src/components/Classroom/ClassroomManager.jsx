@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   GraduationCap, 
   Save, 
@@ -27,14 +27,21 @@ const ClassroomManager = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
+  // Keep localCourses in sync if courses load asynchronously from cloud
+  useEffect(() => {
+    if (courses && Array.isArray(courses) && courses.length > 0) {
+      setLocalCourses(courses);
+    }
+  }, [courses]);
+
   const activeCourse = localCourses[selectedCourseIndex] || localCourses[0];
 
   const handleSave = async () => {
     setIsSaving(true);
     await updateGlobalCourses(localCourses);
     setIsSaving(false);
-    setToastMessage('✅ Classroom Courses Published Successfully!');
-    setTimeout(() => setToastMessage(null), 3000);
+    setToastMessage('✅ Classroom Courses Published to Cloud & All Agents Successfully!');
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   // Course Actions
