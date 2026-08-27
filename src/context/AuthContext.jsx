@@ -26,12 +26,53 @@ export const AuthProvider = ({ children }) => {
     if (email === 'brian@brianburds.com' || email === 'brenda@brianburds.com') {
       role = 'admin';
     } else {
-      // Check if user is in an 'admins' table in Supabase
+      // 1. Check if user is in 'admins' table in Supabase
       try {
         const { data } = await supabase.from('admins').select('email').ilike('email', email).single();
         if (data) role = 'admin';
       } catch (err) {
-        // Table might not exist yet, default to agent
+        console.debug('admins table lookup error:', err);
+      }
+
+      // 2. Check snapshot in global_settings fallback
+      if (role !== 'admin') {
+        try {
+          const { data: snapshot } = await supabase.from('global_settings').select('*').eq('id', 'syndicate_admins_snapshot').single();
+          if (snapshot?.data && Array.isArray(snapshot.data)) {
+            const match = snapshot.data.some(a => {
+              const aEmail = (typeof a === 'string' ? a : a.email || '').toLowerCase().trim();
+              return aEmail === email;
+            });
+            if (match) role = 'admin';
+          }
+        } catch (err) {
+          console.debug('global_settings snapshot admin check:', err);
+        }
+      }
+
+      // 3. Check localStorage cache
+      if (role !== 'admin') {
+        try {
+          const saved = localStorage.getItem('syndicate_admins_list');
+          if (saved) {
+            const list = JSON.parse(saved);
+            if (Array.isArray(list) && list.some(a => (a.email || '').toLowerCase().trim() === email)) {
+              role = 'admin';
+            }
+          }
+        } catch (err) {
+          console.debug('localStorage admin check:', err);
+        }
+      }
+
+      // 4. Check agents table status === 'admin'
+      if (role !== 'admin') {
+        try {
+          const { data: agentData } = await supabase.from('agents').select('status').ilike('id', email).single();
+          if (agentData?.status === 'admin') role = 'admin';
+        } catch (err) {
+          console.debug('agents table admin check:', err);
+        }
       }
     }
 
@@ -88,16 +129,47 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkUserAuthorized = async (safeId) => {
-    if (safeId === 'brian@brianburds.com' || safeId === 'brenda@brianburds.com') {
+    const normalized = (safeId || '').toLowerCase().trim();
+    if (normalized === 'brian@brianburds.com' || normalized === 'brenda@brianburds.com') {
       return true;
     }
     try {
-      const { data: adminData } = await supabase.from('admins').select('email').ilike('email', safeId).single();
+      const { data: adminData } = await supabase.from('admins').select('email').ilike('email', normalized).single();
       if (adminData) return true;
-      const { data: agentData } = await supabase.from('agents').select('id').ilike('id', safeId).single();
+    } catch (err) {
+      console.debug(err);
+    }
+
+    try {
+      const { data: snapshot } = await supabase.from('global_settings').select('*').eq('id', 'syndicate_admins_snapshot').single();
+      if (snapshot?.data && Array.isArray(snapshot.data)) {
+        const match = snapshot.data.some(a => {
+          const aEmail = (typeof a === 'string' ? a : a.email || '').toLowerCase().trim();
+          return aEmail === normalized;
+        });
+        if (match) return true;
+      }
+    } catch (err) {
+      console.debug(err);
+    }
+
+    try {
+      const saved = localStorage.getItem('syndicate_admins_list');
+      if (saved) {
+        const list = JSON.parse(saved);
+        if (Array.isArray(list) && list.some(a => (a.email || '').toLowerCase().trim() === normalized)) {
+          return true;
+        }
+      }
+    } catch (err) {
+      console.debug(err);
+    }
+
+    try {
+      const { data: agentData } = await supabase.from('agents').select('id').ilike('id', normalized).single();
       if (agentData) return true;
     } catch (err) {
-      // Ignore not found errors from query
+      console.debug(err);
     }
     return false;
   };

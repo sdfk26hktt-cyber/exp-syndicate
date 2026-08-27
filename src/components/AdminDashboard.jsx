@@ -38,60 +38,211 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('pipeline'); // 'pipeline' | 'community' | 'calendar' | 'inbox' | 'feed-preview' | 'admins' | 'playbooks'
   
   // Admin Management State
-  const [adminsList, setAdminsList] = useState([]);
+  const [adminsList, setAdminsList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('syndicate_admins_list');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.debug(e);
+    }
+    return [
+      { email: 'brian@brianburds.com', name: 'Brian Burds', role: 'Master Admin' },
+      { email: 'brenda@brianburds.com', name: 'Brenda Faudoa', role: 'Master Admin' }
+    ];
+  });
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [loadingAdmins, setLoadingAdmins] = useState(false);
 
   const fetchAdmins = async () => {
     setLoadingAdmins(true);
+    let currentAdmins = [
+      { email: 'brian@brianburds.com', name: 'Brian Burds', role: 'Master Admin' },
+      { email: 'brenda@brianburds.com', name: 'Brenda Faudoa', role: 'Master Admin' }
+    ];
+
     try {
+      // 1. Try public.admins table
       const { data, error } = await supabase.from('admins').select('*');
-      if (error) {
-        if (error.code === '42P01') {
-           // Table does not exist yet
-           setAdminsList([{email: 'Table not created yet. Check instructions.'}]);
-        } else {
-          console.error(error);
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const combined = [...currentAdmins];
+        data.forEach(item => {
+          if (!combined.some(a => a.email.toLowerCase() === item.email.toLowerCase())) {
+            combined.push(item);
+          }
+        });
+        currentAdmins = combined;
+      } else {
+        // 2. Fallback to global_settings snapshot
+        const { data: snapshot } = await supabase
+          .from('global_settings')
+          .select('*')
+          .eq('id', 'syndicate_admins_snapshot')
+          .single();
+        if (snapshot?.data && Array.isArray(snapshot.data)) {
+          const combined = [...currentAdmins];
+          snapshot.data.forEach(item => {
+            const email = typeof item === 'string' ? item : item.email;
+            if (email && !combined.some(a => a.email.toLowerCase() === email.toLowerCase())) {
+              combined.push(typeof item === 'string' ? { email, name: email.split('@')[0] } : item);
+            }
+          });
+          currentAdmins = combined;
         }
-      } else if (data) {
-        setAdminsList(data);
       }
     } catch (err) {
-      console.error(err);
+      console.debug('Error fetching admins from Supabase:', err);
+    }
+
+    setAdminsList(currentAdmins);
+    try {
+      localStorage.setItem('syndicate_admins_list', JSON.stringify(currentAdmins));
+    } catch (e) {
+      console.debug(e);
     }
     setLoadingAdmins(false);
   };
 
   React.useEffect(() => {
-    if (activeTab === 'admins') {
-      fetchAdmins();
-    }
+    fetchAdmins();
   }, [activeTab]);
+
+  const saveAdminUser = async (email, name, password) => {
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    if (!normalizedEmail) return false;
+
+    const adminObj = {
+      email: normalizedEmail,
+      name: name || normalizedEmail.split('@')[0],
+      created_at: new Date().toISOString()
+    };
+
+    // 1. Try inserting into admins table
+    try {
+      await supabase.from('admins').upsert([adminObj], { onConflict: 'email' });
+    } catch (tableErr) {
+      console.debug('admins table not available, using snapshot fallback:', tableErr);
+    }
+
+    // 2. Update global_settings snapshot
+    const updatedList = [...adminsList];
+    const existingIndex = updatedList.findIndex(a => a.email.toLowerCase() === normalizedEmail);
+    if (existingIndex >= 0) {
+      updatedList[existingIndex] = { ...updatedList[existingIndex], ...adminObj };
+    } else {
+      updatedList.push(adminObj);
+    }
+
+    try {
+      await supabase.from('global_settings').upsert([{
+        id: 'syndicate_admins_snapshot',
+        data: updatedList,
+        updated_at: new Date().toISOString()
+      }], { onConflict: 'id' });
+    } catch (snapshotErr) {
+      console.debug('global_settings admin snapshot fallback:', snapshotErr);
+    }
+
+    // 3. Update localStorage and state
+    try {
+      localStorage.setItem('syndicate_admins_list', JSON.stringify(updatedList));
+    } catch (e) {
+      console.debug(e);
+    }
+    setAdminsList(updatedList);
+
+    // 4. Ensure agent record exists with status 'admin'
+    try {
+      await supabase.from('agents').upsert([{
+        id: normalizedEmail,
+        name: name || normalizedEmail.split('@')[0],
+        status: 'admin',
+        xp: 0,
+        profile: { phone: '', role: 'Administrator' }
+      }], { onConflict: 'id' });
+    } catch (agentErr) {
+      console.debug('agents table upsert notice for admin:', agentErr);
+    }
+
+    // 5. Auth signup if password provided
+    if (password) {
+      try {
+        await supabase.auth.signUp({
+          email: normalizedEmail,
+          password: password
+        });
+      } catch (authErr) {
+        console.debug('Admin pre-signup notice:', authErr);
+      }
+    }
+
+    // 6. Send welcome email via /api/invite
+    try {
+      await fetch('/api/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          name: name || normalizedEmail.split('@')[0],
+          password: password || undefined
+        })
+      });
+    } catch (inviteErr) {
+      console.warn('Failed to trigger admin invite email:', inviteErr);
+    }
+
+    return true;
+  };
 
   const handleAddAdmin = async (e) => {
     e.preventDefault();
     if (!newAdminEmail.trim()) return;
     const normalizedEmail = newAdminEmail.toLowerCase().trim();
     try {
-      const { error } = await supabase.from('admins').insert([{ email: normalizedEmail }]);
-      if (error) throw error;
+      await saveAdminUser(normalizedEmail, normalizedEmail.split('@')[0]);
       setNewAdminEmail('');
-      fetchAdmins();
-      alert('Admin added successfully!');
+      await fetchAdmins();
+      setActionSuccessMsg(`Admin ${normalizedEmail} added successfully!`);
+      setTimeout(() => setActionSuccessMsg(''), 4000);
     } catch (err) {
       alert('Error adding admin: ' + err.message);
     }
   };
 
   const handleRemoveAdmin = async (emailToRemove) => {
-    if(emailToRemove === 'brian@brianburds.com' || emailToRemove === 'brenda@brianburds.com') {
+    const normalized = (emailToRemove || '').toLowerCase().trim();
+    if (normalized === 'brian@brianburds.com' || normalized === 'brenda@brianburds.com') {
       alert("Cannot remove master admin.");
       return;
     }
     try {
-      const { error } = await supabase.from('admins').delete().eq('email', emailToRemove);
-      if (error) throw error;
-      fetchAdmins();
+      try {
+        await supabase.from('admins').delete().eq('email', normalized);
+      } catch (e) {
+        console.debug(e);
+      }
+
+      const updatedList = adminsList.filter(a => a.email.toLowerCase() !== normalized);
+      try {
+        await supabase.from('global_settings').upsert([{
+          id: 'syndicate_admins_snapshot',
+          data: updatedList,
+          updated_at: new Date().toISOString()
+        }], { onConflict: 'id' });
+      } catch (e) {
+        console.debug(e);
+      }
+
+      try {
+        localStorage.setItem('syndicate_admins_list', JSON.stringify(updatedList));
+      } catch (e) {
+        console.debug(e);
+      }
+      setAdminsList(updatedList);
+      setActionSuccessMsg(`Admin ${normalized} removed successfully.`);
+      setTimeout(() => setActionSuccessMsg(''), 4000);
     } catch (err) {
       alert('Error removing admin: ' + err.message);
     }
@@ -343,16 +494,8 @@ const AdminDashboard = () => {
     if (normalizedEmail && newAgentName) {
       if (newUserRole === 'admin') {
         try {
-          const { error } = await supabase.from('admins').insert([{ email: normalizedEmail }]);
-          if (error) throw error;
-          if (newAgentPassword) {
-            try {
-              await supabase.auth.signUp({ email: normalizedEmail, password: newAgentPassword });
-            } catch (authErr) {
-              console.log('Admin pre-signup:', authErr);
-            }
-          }
-          fetchAdmins();
+          await saveAdminUser(normalizedEmail, newAgentName, newAgentPassword);
+          await fetchAdmins();
           setActionSuccessMsg(`Admin ${newAgentName} added successfully!`);
           setTimeout(() => setActionSuccessMsg(''), 4000);
         } catch (err) {
@@ -1020,28 +1163,42 @@ const AdminDashboard = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead style={{ backgroundColor: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)' }}>
                     <tr>
-                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.875rem' }}>Email</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.875rem' }}>Administrator</th>
                       <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.875rem' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>brian@brianburds.com (Master)</td>
-                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', textAlign: 'right' }}>--</td>
+                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)' }}>Brian Burds</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>brian@brianburds.com (Master Admin)</div>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#10b981', backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>Active</span>
+                      </td>
                     </tr>
                     <tr>
-                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>brenda@brianburds.com (Master)</td>
-                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', textAlign: 'right' }}>--</td>
+                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)' }}>Brenda Faudoa</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>brenda@brianburds.com (Master Admin)</div>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#10b981', backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>Active</span>
+                      </td>
                     </tr>
                     {adminsList.map((admin, idx) => {
-                      if (admin.email === 'brian@brianburds.com' || admin.email === 'brenda@brianburds.com') return null;
+                      const email = (admin.email || '').toLowerCase().trim();
+                      if (email === 'brian@brianburds.com' || email === 'brenda@brianburds.com') return null;
                       return (
                         <tr key={idx}>
-                          <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>{admin.email}</td>
+                          <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)' }}>{admin.name || email.split('@')[0]}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{email}</div>
+                          </td>
                           <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', textAlign: 'right' }}>
                             <button 
                               onClick={() => handleRemoveAdmin(admin.email)}
-                              style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}
+                              style={{ color: 'var(--color-danger)', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
                             >
                               Remove
                             </button>
