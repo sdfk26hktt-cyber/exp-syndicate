@@ -212,26 +212,41 @@ const SignIn = () => {
           <div style={styles.error}>
             {error}
             {error.toLowerCase().includes('email not confirmed') && (
-              <div style={{ marginTop: '0.6rem', textAlign: 'center' }}>
+              <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
                 <button
                   type="button"
-                  onClick={() => {
+                  disabled={isLoading}
+                  onClick={async () => {
                     setError('');
                     setAuthMode('code');
-                    setCodeStep(1);
+                    if (identifier.trim()) {
+                      setIsLoading(true);
+                      try {
+                        await requestOtp(identifier.trim());
+                        setCodeStep(2);
+                        setSuccessMessage(`Login code sent to ${identifier.trim()}`);
+                      } catch (err) {
+                        setError(`Error: ${err.message || 'Failed to send code.'}`);
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    } else {
+                      setCodeStep(1);
+                    }
                   }}
                   style={{
                     background: '#ffffff',
                     color: '#2563eb',
                     border: '1px solid #93c5fd',
-                    padding: '6px 12px',
+                    padding: '8px 16px',
                     borderRadius: '6px',
                     cursor: 'pointer',
                     fontWeight: '600',
-                    fontSize: '0.85rem'
+                    fontSize: '0.85rem',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                   }}
                 >
-                  ✉️ Sign in with Email Code Instead
+                  ✉️ Send Login Code to {identifier ? identifier.trim() : 'My Email'}
                 </button>
               </div>
             )}
