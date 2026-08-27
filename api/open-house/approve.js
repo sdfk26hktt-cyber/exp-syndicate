@@ -4,11 +4,11 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
 // API Keys
-const fubApiKey = process.env.FUB_API_KEY;
+const fubApiKey = process.env.FUB_API_KEY || 'fka_0GE0sHDxHWDK9pfJSqkQw2Y23Fme0R2mUS';
 const fubSystemName = process.env.FUB_SYSTEM_NAME || 'eXp Syndicate Dashboard';
 const fubSystemKey = process.env.FUB_SYSTEM_KEY || 'exp-syndicate';
-const linqApiKey = process.env.LINQ_API_KEY;
-const linqFromNumber = process.env.LINQ_FROM_NUMBER || '+19152566989';
+const linqApiKey = process.env.LINQ_API_KEY || 'linq_8g9j8emFbtz7k9WUH4LY9Capp8Wo6no2';
+const linqFromNumber = process.env.LINQ_FROM_NUMBER || '+19154947984';
 
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 

@@ -2,9 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-const linqApiKey = process.env.LINQ_API_KEY;
-const linqFromNumber = process.env.LINQ_FROM_NUMBER || '+19152566989';
-const appBaseUrl = process.env.APP_BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://exp-syndicate.vercel.app');
+const linqApiKey = process.env.LINQ_API_KEY || 'linq_8g9j8emFbtz7k9WUH4LY9Capp8Wo6no2';
+const linqFromNumber = process.env.LINQ_FROM_NUMBER || '+19154947984';
+const appBaseUrl = process.env.APP_BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://www.expsyndicate.com');
 
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
@@ -24,12 +24,16 @@ export default async function handler(req, res) {
     };
 
     if (supabase) {
-      const { data } = await supabase
-        .from('open_house_settings')
-        .select('*')
-        .eq('id', 'default')
-        .single();
-      if (data) settings = { ...settings, ...data };
+      try {
+        const { data } = await supabase
+          .from('open_house_settings')
+          .select('*')
+          .eq('id', 'default')
+          .single();
+        if (data) settings = { ...settings, ...data };
+      } catch (e) {
+        console.debug('open_house_settings lookup:', e);
+      }
     }
 
     const now = new Date();
@@ -55,17 +59,23 @@ export default async function handler(req, res) {
     let linqStatus = 'simulated';
     if (linqApiKey && settings.coordinator_phone) {
       try {
-        const linqRes = await fetch('https://api.linqapp.com/v1/messages', {
+        const cleanTo = settings.coordinator_phone.replace(/[^\d+]/g, '');
+        const normTo = cleanTo.startsWith('+') ? cleanTo : (cleanTo.length === 10 ? `+1${cleanTo}` : `+${cleanTo}`);
+        const cleanFrom = (linqFromNumber || '+19154947984').replace(/[^\d+]/g, '');
+        const normFrom = cleanFrom.startsWith('+') ? cleanFrom : `+1${cleanFrom}`;
+
+        const linqRes = await fetch('https://api.linqapp.com/api/partner/v3/chats', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${linqApiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            from: linqFromNumber,
-            to: settings.coordinator_phone,
-            message,
-            preferred_service: 'auto'
+            from: normFrom,
+            to: [normTo],
+            message: {
+              parts: [{ type: 'text', value: message }]
+            }
           })
         });
         if (linqRes.ok) linqStatus = 'sent';
@@ -75,9 +85,13 @@ export default async function handler(req, res) {
     }
 
     if (supabase) {
-      await supabase
-        .from('open_house_settings')
-        .upsert([{ id: 'default', last_report_sent_at: new Date().toISOString(), updated_at: new Date().toISOString() }], { onConflict: 'id' });
+      try {
+        await supabase
+          .from('open_house_settings')
+          .upsert([{ id: 'default', last_report_sent_at: new Date().toISOString(), updated_at: new Date().toISOString() }], { onConflict: 'id' });
+      } catch (e) {
+        console.debug('open_house_settings upsert error:', e);
+      }
     }
 
     return res.status(200).json({

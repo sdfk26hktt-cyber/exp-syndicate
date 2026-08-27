@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-const linqApiKey = process.env.LINQ_API_KEY;
-const linqFromNumber = process.env.LINQ_FROM_NUMBER || '+19152566989';
+const linqApiKey = process.env.LINQ_API_KEY || 'linq_8g9j8emFbtz7k9WUH4LY9Capp8Wo6no2';
+const linqFromNumber = process.env.LINQ_FROM_NUMBER || '+19154947984';
 
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
@@ -57,20 +57,26 @@ export default async function handler(req, res) {
     // Optional notification to agent if phone provided
     if (linqApiKey && booking?.agent_phone) {
       try {
-        const address = listing?.address || 'Listing';
+        const address = listing?.address || booking?.listing_address || 'Listing';
         const msg = `ℹ️ eXp Syndicate Open House Update: Your request for ${address} on ${booking.date} (${booking.start_time}-${booking.end_time}) was not approved. Note: ${rejectionReason}. Please check the portal to select another available slot!`;
         
-        await fetch('https://api.linqapp.com/v1/messages', {
+        const cleanTo = booking.agent_phone.replace(/[^\d+]/g, '');
+        const normTo = cleanTo.startsWith('+') ? cleanTo : (cleanTo.length === 10 ? `+1${cleanTo}` : `+${cleanTo}`);
+        const cleanFrom = (linqFromNumber || '+19154947984').replace(/[^\d+]/g, '');
+        const normFrom = cleanFrom.startsWith('+') ? cleanFrom : `+1${cleanFrom}`;
+
+        await fetch('https://api.linqapp.com/api/partner/v3/chats', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${linqApiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            from: linqFromNumber,
-            to: booking.agent_phone,
-            message: msg,
-            preferred_service: 'auto'
+            from: normFrom,
+            to: [normTo],
+            message: {
+              parts: [{ type: 'text', value: msg }]
+            }
           })
         });
       } catch (e) {

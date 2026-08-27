@@ -449,11 +449,24 @@ const AdminDashboard = () => {
   };
 
   const handleTriggerReportNotification = async () => {
+    const targetPhone = weeklyReportConfig.coordinator_phone || '+1 (915) 256-6989';
+    const targetName = weeklyReportConfig.coordinator_name || 'Listing Coordinator';
+    const digitsOnly = targetPhone.replace(/\D/g, '');
+    
+    if (digitsOnly === '19154947984' || digitsOnly === '9154947984') {
+      alert("Notice: +1 (915) 494-7984 is the system's outbound LinqApp sending line. Please enter your mobile phone number in 'Coordinator Phone' so LinqApp can deliver the SMS to your personal device.");
+      return;
+    }
+
     setIsSendingReportPrompt(true);
-    await sendWeeklyReportPrompt();
+    const res = await sendWeeklyReportPrompt(targetPhone, targetName);
     setIsSendingReportPrompt(false);
-    setActionSuccessMsg("📱 LinqApp review prompt sent to coordinator phone.");
-    setTimeout(() => setActionSuccessMsg(''), 4000);
+    if (res?.success) {
+      setActionSuccessMsg(`📱 LinqApp review prompt sent successfully to ${targetPhone}!`);
+      setTimeout(() => setActionSuccessMsg(''), 5000);
+    } else {
+      alert(`SMS Notification Notice: ${res?.error || 'Failed to dispatch Linq SMS. Please verify coordinator phone.'}`);
+    }
   };
 
   const approvedEvents = events.filter(e => {
@@ -1425,18 +1438,23 @@ const AdminDashboard = () => {
                     </div>
 
                     {/* Coordinator Phone & Name Inputs */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.75rem' }}>
                       <div>
                         <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                          Coordinator Phone (for LinqApp SMS)
+                          Coordinator Mobile Phone (Recipient)
                         </label>
                         <input
                           type="tel"
                           value={weeklyReportConfig.coordinator_phone || ''}
-                          placeholder="+1 (915) 494-7984"
+                          placeholder="+1 (915) 256-6989"
                           onChange={(e) => updateWeeklyReportConfig({ coordinator_phone: e.target.value })}
                           style={{ ...styles.input, width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.82rem' }}
                         />
+                        {(weeklyReportConfig.coordinator_phone?.replace(/\D/g, '') === '19154947984' || weeklyReportConfig.coordinator_phone?.replace(/\D/g, '') === '9154947984') && (
+                          <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '0.2rem' }}>
+                            ⚠️ This is the outbound sender line. Please enter your personal cell number so you can receive texts.
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.2rem' }}>
@@ -1449,12 +1467,15 @@ const AdminDashboard = () => {
                           onChange={(e) => updateWeeklyReportConfig({ coordinator_name: e.target.value })}
                           style={{ ...styles.input, width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.82rem' }}
                         />
+                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>
+                          Outbound Linq Sender: <span style={{ fontWeight: 600, color: 'var(--color-primary)' }}>+1 (915) 494-7984</span>
+                        </div>
                       </div>
                     </div>
 
                     {weeklyReportConfig.last_report_sent_at && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.4rem' }}>
-                        Last Prompt Sent: {new Date(weeklyReportConfig.last_report_sent_at).toLocaleString()}
+                      <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '0.5rem', fontWeight: 500 }}>
+                        ✓ Last SMS Notification Sent: {new Date(weeklyReportConfig.last_report_sent_at).toLocaleString()}
                       </div>
                     )}
                   </div>

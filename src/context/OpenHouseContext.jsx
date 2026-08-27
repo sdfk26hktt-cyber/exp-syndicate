@@ -408,13 +408,21 @@ export const OpenHouseProvider = ({ children }) => {
       deadline_day_of_week: 4, // Thursday (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
       deadline_time: '17:00', // 5:00 PM
       coordinator_name: 'Listing Coordinator',
-      coordinator_phone: '+1 (915) 494-7984',
+      coordinator_phone: '+1 (915) 256-6989',
       coordinator_email: 'admin@brianburds.com',
+      linq_sender_phone: '+1 (915) 494-7984',
       last_report_sent_at: null
     };
     try {
       const saved = localStorage.getItem('syndicate_open_house_config');
-      if (saved) return { ...defaultConfig, ...JSON.parse(saved) };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // If saved phone is accidentally set to the sender number, default to recipient number
+        if (parsed.coordinator_phone && (parsed.coordinator_phone.replace(/\D/g, '') === '19154947984' || parsed.coordinator_phone.replace(/\D/g, '') === '9154947984')) {
+          parsed.coordinator_phone = '+1 (915) 256-6989';
+        }
+        return { ...defaultConfig, ...parsed };
+      }
     } catch (e) {
       console.debug('OpenHouseContext: using default weeklyReportConfig', e);
     }
@@ -833,23 +841,34 @@ export const OpenHouseProvider = ({ children }) => {
   };
 
   // Trigger weekly report notification prompt manually
-  const sendWeeklyReportPrompt = async () => {
+  const sendWeeklyReportPrompt = async (targetPhone, targetName) => {
     try {
+      const phoneToSend = targetPhone || weeklyReportConfig.coordinator_phone;
+      const nameToSend = targetName || weeklyReportConfig.coordinator_name;
+
       const res = await fetch('/api/open-house/weekly-report-notify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coordinatorPhone: phoneToSend,
+          coordinatorName: nameToSend
+        })
       });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
         const updated = { ...weeklyReportConfig, last_report_sent_at: data.sentAt || new Date().toISOString() };
         setWeeklyReportConfig(updated);
         try { localStorage.setItem('syndicate_open_house_config', JSON.stringify(updated)); } catch (e) { console.debug(e); }
         return { success: true, data };
       }
-      return { success: true, simulated: true };
+      return { 
+        success: false, 
+        error: data.linqError || data.error || data.message || `Server returned status ${res.status}`, 
+        data 
+      };
     } catch (err) {
       console.warn('Could not send notification prompt via API:', err);
-      return { success: true, simulated: true };
+      return { success: false, error: err.message };
     }
   };
 
