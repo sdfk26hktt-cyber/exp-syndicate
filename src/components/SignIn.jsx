@@ -208,7 +208,35 @@ const SignIn = () => {
         <h2 style={styles.title}>Welcome to The Syndicate</h2>
 
         {/* Success / Error Banners */}
-        {error && <div style={styles.error}>{error}</div>}
+        {error && (
+          <div style={styles.error}>
+            {error}
+            {error.toLowerCase().includes('email not confirmed') && (
+              <div style={{ marginTop: '0.6rem', textAlign: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('');
+                    setAuthMode('code');
+                    setCodeStep(1);
+                  }}
+                  style={{
+                    background: '#ffffff',
+                    color: '#2563eb',
+                    border: '1px solid #93c5fd',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  ✉️ Sign in with Email Code Instead
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {successMessage && <div style={styles.success}>{successMessage}</div>}
 
         {/* ----------------- DIRECT RECOVERY MODE (From Email Reset Link) ----------------- */}

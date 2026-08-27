@@ -245,6 +245,9 @@ export const AuthProvider = ({ children }) => {
       if (error.message && (error.message.includes('Invalid login credentials') || error.message.includes('invalid_credentials'))) {
         throw new Error("Invalid password or email. If you haven't set a password yet, please use 'Sign in with Email Code' or click 'Set up Password'.");
       }
+      if (error.message && error.message.toLowerCase().includes('email not confirmed')) {
+        throw new Error("Your email address has not been confirmed yet. Please switch to 'Sign in with Email Code' to receive a single-use login code and activate your account, or check your email for the confirmation link.");
+      }
       throw error;
     }
 
