@@ -204,6 +204,8 @@ export default async function handler(req, res) {
       status: 'approved',
       fubEventId,
       fubStatus,
+      fubLeadId: sellerContactId,
+      fubLeadUrl: sellerContactId ? `https://brianburds.followupboss.com/2/people/view/${sellerContactId}` : null,
       notifications: {
         agent: { status: linqAgentStatus, message: agentMsg },
         coordinator: { status: linqCoordinatorStatus, message: coordinatorMsg }

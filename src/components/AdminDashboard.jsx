@@ -260,12 +260,14 @@ const AdminDashboard = () => {
     lastSyncedAt, 
     weeklyReportConfig, 
     updateWeeklyReportConfig, 
-    sendWeeklyReportPrompt 
+    sendWeeklyReportPrompt,
+    toggleListingOpenHouseAvailability 
   } = useOpenHouse();
   
   const [approvingBookingId, setApprovingBookingId] = useState(null);
   const [isSendingReportPrompt, setIsSendingReportPrompt] = useState(false);
   const [showOpenHouseReportModal, setShowOpenHouseReportModal] = useState(false);
+  const [openHouseListingSearch, setOpenHouseListingSearch] = useState('');
 
   const handleApproveOpenHouse = async (bookingId) => {
     setApprovingBookingId(bookingId);
@@ -1076,6 +1078,7 @@ const AdminDashboard = () => {
                   <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem'}}>
                     {pendingApprovals.map(booking => {
                       const listing = listings.find(l => l.id === booking.listing_id);
+                      const leadId = listing?.seller_contact_id || booking.seller_contact_id;
                       return (
                         <div key={booking.id} style={styles.pendingEventCard}>
                           <div style={{flexGrow: 1}}>
@@ -1102,10 +1105,32 @@ const AdminDashboard = () => {
                                 📝 "{booking.notes}"
                               </p>
                             )}
-                            <div style={{marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1.25rem', flexWrap: 'wrap'}}>
+                            <div style={{marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center'}}>
                               <span><strong>Requested By:</strong> {booking.agent_name} ({booking.agent_phone || booking.agent_id})</span>
                               <span><strong>Listing Agent:</strong> {listing?.listing_agent_name || 'Syndicate'}</span>
                               {listing?.seller_contact_name && <span><strong>Seller:</strong> {listing.seller_contact_name}</span>}
+                              {leadId && (
+                                <a 
+                                  href={`https://brianburds.followupboss.com/2/people/view/${leadId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    color: 'var(--color-primary)',
+                                    fontWeight: 700,
+                                    textDecoration: 'none',
+                                    backgroundColor: 'rgba(0, 161, 224, 0.1)',
+                                    padding: '0.2rem 0.55rem',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(0, 161, 224, 0.25)'
+                                  }}
+                                  title={`Open FUB Lead #${leadId}`}
+                                >
+                                  👤 View Lead in FUB ↗
+                                </a>
+                              )}
                             </div>
                           </div>
                           <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
@@ -1174,7 +1199,7 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
                   {/* Sisu Inventory Snapshot */}
                   <div style={{ backgroundColor: 'var(--color-background)', padding: '1rem', borderRadius: '10px' }}>
                     <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 700, marginBottom: '0.5rem' }}>
@@ -1183,7 +1208,7 @@ const AdminDashboard = () => {
                     <div style={{ fontSize: '0.85rem', color: 'var(--color-text-main)' }}>
                       <div>Last Synced: <strong>{new Date(lastSyncedAt).toLocaleString()}</strong></div>
                       <div style={{ marginTop: '0.35rem', color: 'var(--color-text-muted)' }}>
-                        Inventory is synced to all syndicate agents for weekend open house bookings.
+                        Toggle property availability below to allow or pause agent open house bookings.
                       </div>
                     </div>
                   </div>
@@ -1272,7 +1297,169 @@ const AdminDashboard = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Listing Availability & FUB Lead Controls Table */}
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--color-dark-navy)', fontWeight: 700 }}>
+                        Open House Availability & FUB Lead Sync
+                      </h4>
+                      <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                        Turn toggle ON/OFF to control which properties agents can select for weekend open houses.
+                      </p>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Search property, agent, or seller..."
+                      value={openHouseListingSearch}
+                      onChange={(e) => setOpenHouseListingSearch(e.target.value)}
+                      style={{ ...styles.input, width: '260px', padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '480px', overflowY: 'auto' }}>
+                    {listings
+                      .filter(l => {
+                        if (!openHouseListingSearch) return true;
+                        const q = openHouseListingSearch.toLowerCase();
+                        return (
+                          (l.address || '').toLowerCase().includes(q) ||
+                          (l.listing_agent_name || '').toLowerCase().includes(q) ||
+                          (l.seller_contact_name || '').toLowerCase().includes(q) ||
+                          (l.sisu_listing_id || '').toLowerCase().includes(q)
+                        );
+                      })
+                      .map(listing => {
+                        const isAvailable = listing.is_open_house_enabled !== false;
+                        const leadId = listing.seller_contact_id;
+                        return (
+                          <div
+                            key={listing.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '0.85rem 1rem',
+                              borderRadius: '8px',
+                              backgroundColor: isAvailable ? 'var(--color-background)' : 'rgba(239, 68, 68, 0.04)',
+                              border: `1px solid ${isAvailable ? 'var(--color-border)' : 'rgba(239, 68, 68, 0.25)'}`,
+                              gap: '1rem',
+                              flexWrap: 'wrap'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: '280px', flex: '1 1 auto' }}>
+                              {listing.cover_image && (
+                                <img
+                                  src={listing.cover_image}
+                                  alt={listing.address}
+                                  style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover' }}
+                                />
+                              )}
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ fontWeight: 700, color: 'var(--color-dark-navy)', fontSize: '0.95rem' }}>
+                                    {listing.address}
+                                  </span>
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    backgroundColor: 'var(--color-primary)',
+                                    color: 'white',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px'
+                                  }}>
+                                    {listing.price_formatted || `$${Number(listing.price || 0).toLocaleString()}`}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.2rem', display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
+                                  <span>Agent: <strong>{listing.listing_agent_name || 'Syndicate'}</strong></span>
+                                  <span>Seller: <strong>{listing.seller_contact_name || 'On File'}</strong></span>
+                                  <span>Stage: <strong>{listing.stage || 'Live'}</strong></span>
+                                  {listing.sisu_listing_id && <span style={{ color: 'var(--color-slate-blue)' }}>{listing.sisu_listing_id}</span>}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Lead & Toggle Controls */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                              {leadId && (
+                                <a
+                                  href={`https://brianburds.followupboss.com/2/people/view/${leadId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    color: 'var(--color-primary)',
+                                    fontWeight: 600,
+                                    fontSize: '0.8rem',
+                                    backgroundColor: 'rgba(0, 161, 224, 0.08)',
+                                    border: '1px solid rgba(0, 161, 224, 0.2)',
+                                    padding: '0.35rem 0.65rem',
+                                    borderRadius: '6px',
+                                    textDecoration: 'none'
+                                  }}
+                                  title={`Open FUB Lead #${leadId}`}
+                                >
+                                  👤 Lead #{leadId} ↗
+                                </a>
+                              )}
+
+                              {/* Simple Toggle Switch */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isAvailable}
+                                    onChange={() => toggleListingOpenHouseAvailability(listing.id)}
+                                    style={{
+                                      width: '42px',
+                                      height: '22px',
+                                      appearance: 'none',
+                                      backgroundColor: isAvailable ? '#10b981' : '#cbd5e1',
+                                      borderRadius: '22px',
+                                      position: 'relative',
+                                      cursor: 'pointer',
+                                      transition: 'background-color 0.2s ease',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                  <span
+                                    style={{
+                                      position: 'absolute',
+                                      top: '2px',
+                                      left: isAvailable ? '22px' : '2px',
+                                      width: '18px',
+                                      height: '18px',
+                                      borderRadius: '50%',
+                                      backgroundColor: 'white',
+                                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                      transition: 'left 0.2s ease',
+                                      pointerEvents: 'none'
+                                    }}
+                                  />
+                                </label>
+                                <span style={{
+                                  fontSize: '0.8rem',
+                                  fontWeight: 700,
+                                  color: isAvailable ? '#059669' : '#dc2626',
+                                  minWidth: '85px'
+                                }}>
+                                  {isAvailable ? '🟢 Available' : '⏸️ Paused'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
               </div>
+            </>
+          )}
 
           {pendingEvents.length > 0 && (
             <div className="card mb-6" style={{borderColor: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.05)'}}>
@@ -1747,8 +1934,6 @@ const AdminDashboard = () => {
             </form>
           </div>
           </div>
-          </>
-          )}
         </>
         </ErrorBoundary>
       )}

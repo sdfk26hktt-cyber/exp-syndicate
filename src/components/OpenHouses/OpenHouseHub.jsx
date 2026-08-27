@@ -431,8 +431,23 @@ const OpenHouseHub = () => {
                         </div>
                       </div>
 
-                      {/* Current Bookings / Schedule Status */}
-                      {nextBooking ? (
+                      {/* Current Bookings / Schedule Status or Availability State */}
+                      {listing.is_open_house_enabled === false ? (
+                        <div style={{ 
+                          marginBottom: '1rem',
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          color: '#b91c1c',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem'
+                        }}>
+                          <AlertTriangle size={14} /> Open house paused by coordinator
+                        </div>
+                      ) : nextBooking ? (
                         <div style={{ 
                           marginBottom: '1rem',
                           padding: '0.5rem 0.75rem',
@@ -467,23 +482,47 @@ const OpenHouseHub = () => {
                       )}
 
                       {/* Book Action Button */}
-                      <button
-                        onClick={() => openBookingModal(listing)}
-                        className="btn-primary"
-                        style={{
-                          width: '100%',
-                          marginTop: 'auto',
-                          padding: '0.75rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.5rem',
-                          fontWeight: 700,
-                          fontSize: '0.9rem'
-                        }}
-                      >
-                        <Plus size={16} /> Book Open House
-                      </button>
+                      {listing.is_open_house_enabled === false ? (
+                        <button
+                          disabled
+                          style={{
+                            width: '100%',
+                            marginTop: 'auto',
+                            padding: '0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            fontWeight: 600,
+                            fontSize: '0.9rem',
+                            backgroundColor: 'rgba(0,0,0,0.06)',
+                            color: 'var(--color-text-muted)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: '8px',
+                            cursor: 'not-allowed'
+                          }}
+                        >
+                          Unavailable for Booking
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => openBookingModal(listing)}
+                          className="btn-primary"
+                          style={{
+                            width: '100%',
+                            marginTop: 'auto',
+                            padding: '0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            fontWeight: 700,
+                            fontSize: '0.9rem'
+                          }}
+                        >
+                          <Plus size={16} /> Book Open House
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

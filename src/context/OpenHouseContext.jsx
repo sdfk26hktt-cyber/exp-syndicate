@@ -695,6 +695,34 @@ export const OpenHouseProvider = ({ children }) => {
     }
   };
 
+  // Toggle whether a listing is available for open house
+  const toggleListingOpenHouseAvailability = async (listingId, isEnabled) => {
+    const updatedListings = listings.map(l => {
+      if (l.id === listingId) {
+        const nextVal = isEnabled !== undefined ? isEnabled : (l.is_open_house_enabled === false ? true : false);
+        return {
+          ...l,
+          is_open_house_enabled: nextVal
+        };
+      }
+      return l;
+    });
+
+    setListings(updatedListings);
+
+    // Persist to Supabase / snapshot if connected
+    if (supabase) {
+      try {
+        const target = updatedListings.find(l => l.id === listingId);
+        if (target) {
+          await supabase.from('listings').upsert([target], { onConflict: 'id' });
+        }
+      } catch (err) {
+        console.warn('Error saving listing availability to Supabase:', err);
+      }
+    }
+  };
+
   // Filtered views
   const currentAgentEmail = (currentUser?.email || '').toLowerCase().trim();
   const myBookings = useMemo(() => {
@@ -727,6 +755,7 @@ export const OpenHouseProvider = ({ children }) => {
         syncSisuListings,
         updateWeeklyReportConfig,
         sendWeeklyReportPrompt,
+        toggleListingOpenHouseAvailability,
         loadOpenHouseData
       }}
     >
