@@ -336,10 +336,19 @@ export default async function handler(req, res) {
       });
     }
 
-    // Upsert into Supabase if connected
+    // Upsert into Supabase system config if connected
     if (supabase && syncedListings.length > 0) {
       try {
-        await supabase.from('listings').upsert(syncedListings, { onConflict: 'id' });
+        await supabase.from('agents').upsert([{
+          id: '__SYSTEM_CONFIG_LISTINGS__',
+          name: 'Listings & Sisu/FUB Inventory Config',
+          status: 'system',
+          profile: {
+            listings: syncedListings,
+            last_synced_at: new Date().toISOString(),
+            total_count: syncedListings.length
+          }
+        }]);
       } catch (dbErr) {
         console.warn('Database save warning:', dbErr.message);
       }

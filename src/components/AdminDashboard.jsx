@@ -13,6 +13,7 @@ import ErrorBoundary from './ErrorBoundary';
 import PlaybookManager from './PlaybookManager';
 import ClassroomManager from './Classroom/ClassroomManager';
 import OpenHouseWeeklyReport from './OpenHouses/OpenHouseWeeklyReport';
+import ListingEditModal from './OpenHouses/ListingEditModal';
 import AgentAutocomplete from './AgentAutocomplete';
 import LevelBadge from './Gamification/LevelBadge';
 import { DEFAULT_LEVEL_THRESHOLDS, DEFAULT_PHASE_UNLOCK_LEVELS } from '../utils/gamification';
@@ -432,6 +433,8 @@ const AdminDashboard = () => {
   const [approvingBookingId, setApprovingBookingId] = useState(null);
   const [isSendingReportPrompt, setIsSendingReportPrompt] = useState(false);
   const [showOpenHouseReportModal, setShowOpenHouseReportModal] = useState(false);
+  const [showListingEditModal, setShowListingEditModal] = useState(false);
+  const [selectedListingForEdit, setSelectedListingForEdit] = useState(null);
   const [openHouseListingSearch, setOpenHouseListingSearch] = useState('');
 
   const handleApproveOpenHouse = async (bookingId) => {
@@ -1381,15 +1384,37 @@ const AdminDashboard = () => {
                     </h3>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => {
+                        setSelectedListingForEdit(null);
+                        setShowListingEditModal(true);
+                      }}
+                      style={{
+                        padding: '0.5rem 0.85rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--color-primary)',
+                        backgroundColor: 'var(--color-surface)',
+                        color: 'var(--color-primary)',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      <Plus size={15} /> Add Property
+                    </button>
+
                     <button
                       onClick={() => setShowOpenHouseReportModal(true)}
                       style={{
                         padding: '0.5rem 0.85rem',
                         borderRadius: '8px',
-                        border: '1px solid var(--color-primary)',
-                        backgroundColor: 'rgba(0, 161, 224, 0.08)',
-                        color: 'var(--color-primary)',
+                        border: '1px solid var(--color-border)',
+                        backgroundColor: 'var(--color-surface)',
+                        color: 'var(--color-text-main)',
                         fontWeight: 600,
                         fontSize: '0.85rem',
                         cursor: 'pointer',
@@ -1408,7 +1433,7 @@ const AdminDashboard = () => {
                       style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
                     >
                       <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
-                      {isSyncing ? 'Syncing Sisu...' : 'Refresh Listings from Sisu'}
+                      {isSyncing ? 'Syncing Sisu...' : 'Refresh Listings Feed'}
                     </button>
                   </div>
                 </div>
@@ -1422,7 +1447,7 @@ const AdminDashboard = () => {
                     <div style={{ fontSize: '0.85rem', color: 'var(--color-text-main)' }}>
                       <div>Last Synced: <strong>{new Date(lastSyncedAt).toLocaleString()}</strong></div>
                       <div style={{ marginTop: '0.35rem', color: 'var(--color-text-muted)' }}>
-                        Toggle property availability below to allow or pause agent open house bookings.
+                        Click <strong>"Edit & Connect CRM"</strong> on any property to link Follow Up Boss leads/deals or Sisu IDs.
                       </div>
                     </div>
                   </div>
@@ -1525,23 +1550,25 @@ const AdminDashboard = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                     <div>
                       <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--color-dark-navy)', fontWeight: 700 }}>
-                        Open House Availability & FUB Lead Sync
+                        Open House Availability & CRM Integration Feed
                       </h4>
                       <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                        Turn toggle ON/OFF to control which properties agents can select for weekend open houses.
+                        Manage property inventory, Follow Up Boss connections, Sisu IDs, and agent open house eligibility.
                       </p>
                     </div>
 
-                    <input
-                      type="text"
-                      placeholder="Search property, agent, or seller..."
-                      value={openHouseListingSearch}
-                      onChange={(e) => setOpenHouseListingSearch(e.target.value)}
-                      style={{ ...styles.input, width: '260px', padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
-                    />
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="Search property, agent, or seller..."
+                        value={openHouseListingSearch}
+                        onChange={(e) => setOpenHouseListingSearch(e.target.value)}
+                        style={{ ...styles.input, width: '240px', padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                      />
+                    </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '480px', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '520px', overflowY: 'auto' }}>
                     {listings
                       .filter(l => {
                         if (!openHouseListingSearch) return true;
@@ -1550,12 +1577,17 @@ const AdminDashboard = () => {
                           (l.address || '').toLowerCase().includes(q) ||
                           (l.listing_agent_name || '').toLowerCase().includes(q) ||
                           (l.seller_contact_name || '').toLowerCase().includes(q) ||
-                          (l.sisu_listing_id || '').toLowerCase().includes(q)
+                          (l.sisu_listing_id || '').toLowerCase().includes(q) ||
+                          (l.mls_number || '').toLowerCase().includes(q)
                         );
                       })
                       .map(listing => {
                         const isAvailable = listing.is_open_house_enabled !== false;
                         const leadId = listing.seller_contact_id;
+                        const dealId = listing.fub_deal_id;
+                        const hasFub = Boolean(leadId || dealId || listing.fub_link);
+                        const fubUrl = listing.fub_link || (leadId ? `https://brianburds.followupboss.com/2/people/view/${leadId}` : (dealId ? `https://brianburds.followupboss.com/2/deals/view/${dealId}` : null));
+
                         return (
                           <div
                             key={listing.id}
@@ -1576,11 +1608,12 @@ const AdminDashboard = () => {
                                 <img
                                   src={listing.cover_image}
                                   alt={listing.address}
-                                  style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover' }}
+                                  style={{ width: '52px', height: '52px', borderRadius: '8px', objectFit: 'cover', border: '1px solid var(--color-border)' }}
+                                  onError={(e) => { e.target.style.display = 'none'; }}
                                 />
                               )}
                               <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                   <span style={{ fontWeight: 700, color: 'var(--color-dark-navy)', fontSize: '0.95rem' }}>
                                     {listing.address}
                                   </span>
@@ -1594,21 +1627,56 @@ const AdminDashboard = () => {
                                   }}>
                                     {listing.price_formatted || `$${Number(listing.price || 0).toLocaleString()}`}
                                   </span>
+
+                                  {hasFub ? (
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '0.15rem 0.45rem', borderRadius: '4px' }}>
+                                      ✓ FUB Connected
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#d97706', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '0.15rem 0.45rem', borderRadius: '4px' }}>
+                                      ⚠️ FUB Unlinked
+                                    </span>
+                                  )}
                                 </div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.2rem', display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
+
+                                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem', display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
                                   <span>Agent: <strong>{listing.listing_agent_name || 'Syndicate'}</strong></span>
                                   <span>Seller: <strong>{listing.seller_contact_name || 'On File'}</strong></span>
-                                  <span>Stage: <strong>{listing.stage || 'Live'}</strong></span>
+                                  <span>Specs: <strong>{listing.bedrooms || 3}b/{listing.bathrooms || 2}ba {listing.sqft ? `• ${listing.sqft.toLocaleString()} sqft` : ''}</strong></span>
                                   {listing.sisu_listing_id && <span style={{ color: 'var(--color-slate-blue)' }}>{listing.sisu_listing_id}</span>}
                                 </div>
                               </div>
                             </div>
 
-                            {/* Lead & Toggle Controls */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                              {leadId && (
+                            {/* Actions, CRM Links & Toggle Controls */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                              {/* Edit / Connect CRM Button */}
+                              <button
+                                onClick={() => {
+                                  setSelectedListingForEdit(listing);
+                                  setShowListingEditModal(true);
+                                }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  padding: '0.4rem 0.75rem',
+                                  borderRadius: '6px',
+                                  border: '1px solid var(--color-border)',
+                                  backgroundColor: 'var(--color-surface)',
+                                  color: 'var(--color-dark-navy)',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
+                                }}
+                                title="Edit listing details, Follow Up Boss link, and Sisu settings"
+                              >
+                                <Edit2 size={13} /> Edit / Connect CRM
+                              </button>
+
+                              {fubUrl && (
                                 <a
-                                  href={`https://brianburds.followupboss.com/2/people/view/${leadId}`}
+                                  href={fubUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   style={{
@@ -1624,14 +1692,14 @@ const AdminDashboard = () => {
                                     borderRadius: '6px',
                                     textDecoration: 'none'
                                   }}
-                                  title={`Open FUB Lead #${leadId}`}
+                                  title="Open record in Follow Up Boss"
                                 >
-                                  👤 Lead #{leadId} ↗
+                                  FUB #{leadId || dealId || 'Link'} ↗
                                 </a>
                               )}
 
                               {/* Simple Toggle Switch */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.25rem' }}>
                                 <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
                                   <input
                                     type="checkbox"
@@ -1680,6 +1748,16 @@ const AdminDashboard = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Listing Edit Modal */}
+              <ListingEditModal
+                isOpen={showListingEditModal}
+                listing={selectedListingForEdit}
+                onClose={() => {
+                  setShowListingEditModal(false);
+                  setSelectedListingForEdit(null);
+                }}
+              />
             </>
           )}
 

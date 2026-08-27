@@ -95,12 +95,30 @@ export const OpenHouseProvider = ({ children }) => {
     }
   };
 
-  const persistListings = (newListings) => {
+  // Save listings to state, localStorage, and Supabase cloud system config
+  const persistListings = async (newListings) => {
     setListings(newListings);
     try {
       localStorage.setItem('syndicate_open_house_listings', JSON.stringify(newListings));
     } catch (e) {
       console.warn('Could not persist open house listings to localStorage:', e);
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('agents').upsert([{
+          id: '__SYSTEM_CONFIG_LISTINGS__',
+          name: 'Listings & Sisu/FUB Inventory Config',
+          status: 'system',
+          profile: {
+            listings: newListings,
+            last_synced_at: new Date().toISOString(),
+            total_count: newListings.length
+          }
+        }]);
+      } catch (err) {
+        console.warn('Error saving listings to Supabase:', err);
+      }
     }
   };
 
@@ -171,29 +189,28 @@ export const OpenHouseProvider = ({ children }) => {
     try {
       if (!supabase) return;
 
-      // 1. Listings
-      const { data: dbListings } = await supabase
-        .from('listings')
-        .select('*')
-        .order('price', { ascending: false });
-
-      if (dbListings && dbListings.length > 0) {
-        persistListings(dbListings);
-        const mostRecent = dbListings[0].last_synced_at;
-        if (mostRecent) {
-          setLastSyncedAt(mostRecent);
-          try { localStorage.setItem('syndicate_open_house_last_synced', mostRecent); } catch (e) { console.debug(e); }
-        }
-      } else {
-        // Check snapshot in global_settings fallback
-        const { data: snapshot } = await supabase
-          .from('global_settings')
+      // 1. Listings from cloud system config row
+      try {
+        const { data: configRow } = await supabase
+          .from('agents')
           .select('*')
-          .eq('id', 'synced_listings_snapshot')
+          .eq('id', '__SYSTEM_CONFIG_LISTINGS__')
           .single();
-        if (snapshot?.data && Array.isArray(snapshot.data)) {
-          persistListings(snapshot.data);
+
+        if (configRow?.profile?.listings && Array.isArray(configRow.profile.listings) && configRow.profile.listings.length > 0) {
+          setListings(configRow.profile.listings);
+          try {
+            localStorage.setItem('syndicate_open_house_listings', JSON.stringify(configRow.profile.listings));
+          } catch (e) {
+            console.debug(e);
+          }
+          if (configRow.profile.last_synced_at) {
+            setLastSyncedAt(configRow.profile.last_synced_at);
+            try { localStorage.setItem('syndicate_open_house_last_synced', configRow.profile.last_synced_at); } catch (e) { console.debug(e); }
+          }
         }
+      } catch (listErr) {
+        console.debug('Cloud listing config load fallback:', listErr);
       }
 
       // 2. Bookings - Query from live Supabase events table
@@ -561,29 +578,113 @@ export const OpenHouseProvider = ({ children }) => {
   // Toggle whether a listing is available for open house
   const toggleListingOpenHouseAvailability = async (listingId, isEnabled) => {
     const updatedListings = listings.map(l => {
-      if (l.id === listingId) {
+      if (l.id === listingId || l.sisu_listing_id === listingId) {
         const nextVal = isEnabled !== undefined ? isEnabled : (l.is_open_house_enabled === false ? true : false);
         return {
           ...l,
-          is_open_house_enabled: nextVal
+          is_open_house_enabled: nextVal,
+          is_available_for_open_house: nextVal
         };
       }
       return l;
     });
 
-    persistListings(updatedListings);
+    await persistListings(updatedListings);
+  };
 
-    // Persist to Supabase / snapshot if connected
-    if (supabase) {
-      try {
-        const target = updatedListings.find(l => l.id === listingId);
-        if (target) {
-          await supabase.from('listings').upsert([target], { onConflict: 'id' });
+  // Update specific listing with FUB, Sisu, property, or agent details
+  const updateListing = async (listingId, updatedFields) => {
+    const updatedListings = listings.map(l => {
+      if (l.id === listingId || l.sisu_listing_id === listingId) {
+        const sellerId = updatedFields.seller_contact_id !== undefined ? updatedFields.seller_contact_id : l.seller_contact_id;
+        const fubDealId = updatedFields.fub_deal_id !== undefined ? updatedFields.fub_deal_id : l.fub_deal_id;
+        
+        let fubLink = updatedFields.fub_link || l.fub_link;
+        if (sellerId) {
+          fubLink = `https://brianburds.followupboss.com/2/people/view/${sellerId}`;
+        } else if (fubDealId) {
+          fubLink = `https://brianburds.followupboss.com/2/deals/view/${fubDealId}`;
         }
-      } catch (err) {
-        console.warn('Error saving listing availability to Supabase:', err);
+
+        const priceNum = updatedFields.price !== undefined 
+          ? (typeof updatedFields.price === 'number' ? updatedFields.price : (Number(String(updatedFields.price).replace(/[^0-9.-]+/g, '')) || 0))
+          : l.price;
+
+        const priceFormatted = updatedFields.price_formatted || (priceNum > 0 ? `$${priceNum.toLocaleString()}` : (l.price_formatted || 'Contact Team'));
+
+        return {
+          ...l,
+          ...updatedFields,
+          price: priceNum,
+          price_formatted: priceFormatted,
+          seller_contact_id: sellerId,
+          fub_deal_id: fubDealId,
+          fub_link: fubLink,
+          fub_status: (sellerId || fubDealId || fubLink) ? 'connected' : 'unlinked',
+          last_synced_at: new Date().toISOString()
+        };
       }
+      return l;
+    });
+
+    await persistListings(updatedListings);
+    return updatedListings.find(l => l.id === listingId || l.sisu_listing_id === listingId);
+  };
+
+  // Add new listing manually
+  const addListing = async (newListingData) => {
+    const id = newListingData.id || `fub-sisu-${Date.now()}`;
+    const sisuId = newListingData.sisu_listing_id || (newListingData.mls_number ? `MLS-${newListingData.mls_number}` : `SISU-${Date.now().toString().slice(-6)}`);
+    const sellerId = newListingData.seller_contact_id || null;
+    const fubDealId = newListingData.fub_deal_id || null;
+    
+    let fubLink = newListingData.fub_link;
+    if (sellerId) {
+      fubLink = `https://brianburds.followupboss.com/2/people/view/${sellerId}`;
+    } else if (fubDealId) {
+      fubLink = `https://brianburds.followupboss.com/2/deals/view/${fubDealId}`;
     }
+
+    const priceNum = typeof newListingData.price === 'number' 
+      ? newListingData.price 
+      : (Number(String(newListingData.price || 0).replace(/[^0-9.-]+/g, '')) || 0);
+
+    const formatted = {
+      id,
+      sisu_listing_id: sisuId,
+      mls_number: newListingData.mls_number || (sisuId.startsWith('MLS-') ? sisuId.replace('MLS-', '') : ''),
+      address: newListingData.address || 'New Listing Address',
+      price: priceNum,
+      price_formatted: newListingData.price_formatted || (priceNum > 0 ? `$${priceNum.toLocaleString()}` : 'Contact Team'),
+      stage: newListingData.stage || 'MLS Live Listings',
+      listing_agent_id: newListingData.listing_agent_id || 'brian@brianburds.com',
+      listing_agent_name: newListingData.listing_agent_name || 'Brian Burds',
+      seller_contact_name: newListingData.seller_contact_name || 'Seller on File',
+      seller_contact_id: sellerId,
+      seller_phone: newListingData.seller_phone || '(915) 555-0100',
+      fub_deal_id: fubDealId,
+      fub_link: fubLink,
+      fub_status: (sellerId || fubDealId || fubLink) ? 'connected' : 'unlinked',
+      status: newListingData.status || 'active',
+      is_available_for_open_house: newListingData.is_available_for_open_house !== false,
+      is_open_house_enabled: newListingData.is_open_house_enabled !== false,
+      bedrooms: Number(newListingData.bedrooms) || 3,
+      bathrooms: Number(newListingData.bathrooms) || 2,
+      sqft: Number(newListingData.sqft) || 1800,
+      cover_image: newListingData.cover_image || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80',
+      notes: newListingData.notes || '',
+      last_synced_at: new Date().toISOString()
+    };
+
+    const updatedListings = [formatted, ...listings];
+    await persistListings(updatedListings);
+    return formatted;
+  };
+
+  // Delete / remove listing
+  const deleteListing = async (listingId) => {
+    const updatedListings = listings.filter(l => l.id !== listingId && l.sisu_listing_id !== listingId);
+    await persistListings(updatedListings);
   };
 
   // Filtered views
@@ -626,6 +727,9 @@ export const OpenHouseProvider = ({ children }) => {
         updateWeeklyReportConfig,
         sendWeeklyReportPrompt,
         toggleListingOpenHouseAvailability,
+        updateListing,
+        addListing,
+        deleteListing,
         loadOpenHouseData
       }}
     >
