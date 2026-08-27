@@ -24,6 +24,7 @@ import {
 import { useAgent } from '../../context/AgentContext';
 import { useAuth } from '../../context/AuthContext';
 import LevelBadge from '../Gamification/LevelBadge';
+import { parseEmbedMedia } from '../../utils/mediaEmbed';
 
 const CoursePlayer = () => {
   const { courseId, lessonId } = useParams();
@@ -164,29 +165,8 @@ const CoursePlayer = () => {
     }));
   };
 
-  // Convert video URL to embeddable iframe if YouTube/Vimeo/Loom
-  const getEmbedUrl = (url) => {
-    if (!url) return null;
-    if (url.includes('youtube.com/watch?v=')) {
-      const vidId = url.split('v=')[1]?.split('&')[0];
-      return `https://www.youtube.com/embed/${vidId}`;
-    }
-    if (url.includes('youtu.be/')) {
-      const vidId = url.split('youtu.be/')[1]?.split('?')[0];
-      return `https://www.youtube.com/embed/${vidId}`;
-    }
-    if (url.includes('vimeo.com/')) {
-      const vidId = url.split('vimeo.com/')[1]?.split('?')[0];
-      return `https://player.vimeo.com/video/${vidId}`;
-    }
-    if (url.includes('loom.com/share/')) {
-      const vidId = url.split('loom.com/share/')[1]?.split('?')[0];
-      return `https://www.loom.com/embed/${vidId}`;
-    }
-    return url;
-  };
-
-  const embedUrl = getEmbedUrl(currentLesson?.videoUrl);
+  // Parse video, Canva presentation, Tango.ai walkthrough, or iframe embed media
+  const embedMedia = parseEmbedMedia(currentLesson?.videoUrl);
 
   return (
     <div className="animate-fade-in course-player-container">
@@ -469,17 +449,93 @@ const CoursePlayer = () => {
             </div>
           </div>
 
-          {/* Video Player Box */}
+          {/* Training Media / Video / Presentation / Walkthrough Box */}
           <div style={styles.videoCard}>
-            {embedUrl ? (
-              <div style={styles.videoResponsiveWrapper}>
-                <iframe
-                  src={embedUrl}
-                  title={currentLesson?.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  style={styles.iframe}
-                />
+            {embedMedia && embedMedia.embedUrl ? (
+              <div>
+                {/* Media Type & Quick Action Header */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.6rem 1rem',
+                  backgroundColor: '#0b1120',
+                  borderBottom: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '4px',
+                      backgroundColor: `${embedMedia.badgeColor}25`,
+                      color: embedMedia.badgeColor
+                    }}>
+                      {embedMedia.badgeLabel}
+                    </span>
+                    {embedMedia.isWalkthrough && (
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Interactive Step-by-Step Guide</span>
+                    )}
+                    {embedMedia.isPresentation && (
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Interactive Slideshow</span>
+                    )}
+                  </div>
+
+                  <a
+                    href={embedMedia.rawUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontSize: '0.75rem',
+                      color: '#94a3b8',
+                      textDecoration: 'none',
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(255,255,255,0.06)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'white'; e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.12)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; }}
+                  >
+                    <span>Open Full Screen</span>
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+
+                {/* Media Embed Container */}
+                {embedMedia.isDirectVideo ? (
+                  <div style={styles.videoResponsiveWrapper}>
+                    <video
+                      src={embedMedia.embedUrl}
+                      controls
+                      playsInline
+                      style={styles.iframe}
+                    />
+                  </div>
+                ) : (
+                  <div style={{
+                    ...styles.videoResponsiveWrapper,
+                    ...(embedMedia.type === 'tango' ? {
+                      paddingBottom: 0,
+                      height: '660px',
+                      minHeight: '600px'
+                    } : {})
+                  }}>
+                    <iframe
+                      src={embedMedia.embedUrl}
+                      title={currentLesson?.title || 'Training Content'}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                      style={styles.iframe}
+                    />
+                  </div>
+                )}
               </div>
             ) : (
               <div style={styles.videoPlaceholder}>
@@ -587,28 +643,34 @@ const CoursePlayer = () => {
               </div>
 
               <div className="course-player-resources-grid">
-                {currentLesson.resources.map((res, rIdx) => (
-                  <a
-                    key={rIdx}
-                    href={res.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={styles.resourceCard}
-                  >
-                    <div style={styles.resourceIconBox}>
-                      {res.type === 'sheet' ? (
-                        <FileSpreadsheet size={20} color="#10b981" />
-                      ) : (
-                        <FileText size={20} color="var(--color-primary)" />
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={styles.resourceName}>{res.name}</div>
-                      <div style={styles.resourceSub}>{res.type ? res.type.toUpperCase() : 'DOCUMENT'} • Tap to view</div>
-                    </div>
-                    <ExternalLink size={16} color="var(--color-text-muted)" />
-                  </a>
-                ))}
+                {currentLesson.resources.map((res, rIdx) => {
+                  const getResourceIcon = (type) => {
+                    if (type === 'sheet') return <FileSpreadsheet size={20} color="#10b981" />;
+                    if (type === 'canva') return <Sparkles size={20} color="#7d2ae8" />;
+                    if (type === 'tango') return <Sparkles size={20} color="#ec4899" />;
+                    if (type === 'video') return <Video size={20} color="#3b82f6" />;
+                    return <FileText size={20} color="var(--color-primary)" />;
+                  };
+
+                  return (
+                    <a
+                      key={rIdx}
+                      href={res.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={styles.resourceCard}
+                    >
+                      <div style={styles.resourceIconBox}>
+                        {getResourceIcon(res.type)}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={styles.resourceName}>{res.name}</div>
+                        <div style={styles.resourceSub}>{res.type ? res.type.toUpperCase() : 'DOCUMENT'} • Tap to view</div>
+                      </div>
+                      <ExternalLink size={16} color="var(--color-text-muted)" />
+                    </a>
+                  );
+                })}
               </div>
             </div>
           )}

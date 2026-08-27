@@ -7,16 +7,23 @@ import {
   ChevronDown, 
   ChevronUp, 
   Video, 
-  X
+  X,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Play
 } from 'lucide-react';
 import { useAgent } from '../../context/AgentContext';
 import LevelBadge from '../Gamification/LevelBadge';
+import { parseEmbedMedia, extractIframeSrc } from '../../utils/mediaEmbed';
 
 const ClassroomManager = () => {
   const { courses, updateGlobalCourses, gamificationSettings } = useAgent();
   const [localCourses, setLocalCourses] = useState(courses || []);
   const [selectedCourseIndex, setSelectedCourseIndex] = useState(0);
   const [expandedModuleIndex, setExpandedModuleIndex] = useState(0);
+  const [previewLessonId, setPreviewLessonId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -474,19 +481,131 @@ const ClassroomManager = () => {
                                 </button>
                               </div>
 
-                              {/* Video URL */}
-                              <div style={{ marginBottom: '1rem' }}>
-                                <label style={styles.label}>Video URL (YouTube, Loom, Vimeo, or MP4)</label>
+                              {/* Lesson Media / Presentation / Walkthrough URL */}
+                              <div style={{ marginBottom: '1.25rem', backgroundColor: '#f8fafc', padding: '0.875rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                  <label style={{ ...styles.label, marginBottom: 0, fontWeight: 700, color: 'var(--color-dark-navy)' }}>
+                                    Media, Presentation, or Walkthrough URL
+                                  </label>
+                                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.7rem', backgroundColor: '#ede9fe', color: '#6d28d9', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Canva 🎨</span>
+                                    <span style={{ fontSize: '0.7rem', backgroundColor: '#fce7f3', color: '#be185d', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Tango.ai 🪄</span>
+                                    <span style={{ fontSize: '0.7rem', backgroundColor: '#fee2e2', color: '#b91c1c', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>YouTube ▶️</span>
+                                    <span style={{ fontSize: '0.7rem', backgroundColor: '#e0e7ff', color: '#3730a3', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Loom 🎥</span>
+                                    <span style={{ fontSize: '0.7rem', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Slides 📊</span>
+                                  </div>
+                                </div>
+
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   <Video size={16} color="var(--color-text-muted)" />
                                   <input
                                     type="text"
                                     value={lesson.videoUrl || ''}
-                                    onChange={(e) => updateLessonField(mIdx, lIdx, 'videoUrl', e.target.value)}
-                                    style={styles.input}
-                                    placeholder="https://www.youtube.com/watch?v=... or https://loom.com/share/..."
+                                    onChange={(e) => {
+                                      const clean = extractIframeSrc(e.target.value);
+                                      updateLessonField(mIdx, lIdx, 'videoUrl', clean);
+                                    }}
+                                    style={{ ...styles.input, backgroundColor: 'white' }}
+                                    placeholder="Paste Canva presentation link, Tango.ai walkthrough, YouTube, Loom, Google Slides, or <iframe> code..."
                                   />
                                 </div>
+
+                                {/* Media Detection & Interactive Live Preview */}
+                                {(() => {
+                                  const mediaInfo = parseEmbedMedia(lesson.videoUrl);
+                                  if (!lesson.videoUrl || mediaInfo.type === 'empty') {
+                                    return (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.35rem' }}>
+                                        💡 Supports Canva view/present links, Tango.ai workflow guides, YouTube, Loom, Vimeo, Slides, and direct video files.
+                                      </div>
+                                    );
+                                  }
+
+                                  const isPreviewing = previewLessonId === lesson.id;
+
+                                  return (
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '4px', backgroundColor: `${mediaInfo.badgeColor}15`, color: mediaInfo.badgeColor }}>
+                                          <span>{mediaInfo.badgeLabel || 'Detected Media'}</span>
+                                          {mediaInfo.embedUrl && <span style={{ opacity: 0.8, fontSize: '0.7rem' }}>• Player Ready</span>}
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPreviewLessonId(isPreviewing ? null : lesson.id)}
+                                            style={{
+                                              fontSize: '0.75rem',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '0.3rem',
+                                              backgroundColor: isPreviewing ? '#0f172a' : 'white',
+                                              color: isPreviewing ? 'white' : 'var(--color-primary)',
+                                              border: '1px solid var(--color-border)',
+                                              borderRadius: '5px',
+                                              padding: '0.25rem 0.55rem',
+                                              cursor: 'pointer',
+                                              fontWeight: 600
+                                            }}
+                                          >
+                                            {isPreviewing ? <EyeOff size={12} /> : <Eye size={12} />}
+                                            {isPreviewing ? 'Close Preview' : 'Live Preview'}
+                                          </button>
+
+                                          <a
+                                            href={mediaInfo.rawUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                              fontSize: '0.75rem',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '0.25rem',
+                                              color: 'var(--color-text-muted)',
+                                              textDecoration: 'none'
+                                            }}
+                                          >
+                                            Test Link <ExternalLink size={11} />
+                                          </a>
+                                        </div>
+                                      </div>
+
+                                      {/* Expanded Live Player Preview Drawer */}
+                                      {isPreviewing && mediaInfo.embedUrl && (
+                                        <div style={{ marginTop: '0.65rem', backgroundColor: '#0f172a', borderRadius: '8px', overflow: 'hidden', border: '1px solid #334155', padding: '0.5rem' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.5rem', marginBottom: '0.4rem', borderBottom: '1px solid #1e293b' }}>
+                                            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>
+                                              Previewing {mediaInfo.badgeLabel}:
+                                            </span>
+                                            <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                                              {mediaInfo.aspectRatio || '16:9'}
+                                            </span>
+                                          </div>
+                                          <div style={{
+                                            position: 'relative',
+                                            width: '100%',
+                                            height: mediaInfo.type === 'tango' ? '500px' : '340px',
+                                            borderRadius: '6px',
+                                            overflow: 'hidden'
+                                          }}>
+                                            {mediaInfo.isDirectVideo ? (
+                                              <video src={mediaInfo.embedUrl} controls style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                            ) : (
+                                              <iframe
+                                                src={mediaInfo.embedUrl}
+                                                title="Media Preview"
+                                                style={{ width: '100%', height: '100%', border: 0 }}
+                                                allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                                allowFullScreen
+                                              />
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
 
                               {/* Lesson Notes */}
@@ -589,6 +708,9 @@ const ClassroomManager = () => {
                                         <option value="doc">Document</option>
                                         <option value="slides">Slides</option>
                                         <option value="canva">Canva</option>
+                                        <option value="tango">Tango.ai</option>
+                                        <option value="video">Video</option>
+                                        <option value="link">Link</option>
                                       </select>
                                     </div>
                                     <button 
