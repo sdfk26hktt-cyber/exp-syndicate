@@ -1077,8 +1077,13 @@ const AdminDashboard = () => {
                   </div>
                   <div style={{display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.5rem'}}>
                     {pendingApprovals.map(booking => {
-                      const listing = listings.find(l => l.id === booking.listing_id);
+                      const listing = listings.find(l => l.id === booking.listing_id || l.sisu_listing_id === booking.listing_id);
+                      const displayAddress = listing?.address || booking.listing_address || 'Listing Address';
+                      const displayPrice = listing?.price_formatted || booking.listing_price || 'Listing';
+                      const displayListingAgent = listing?.listing_agent_name || booking.listing_agent_name || 'Syndicate';
                       const leadId = listing?.seller_contact_id || booking.seller_contact_id;
+                      const sellerName = listing?.seller_contact_name || booking.seller_contact_name;
+
                       return (
                         <div key={booking.id} style={styles.pendingEventCard}>
                           <div style={{flexGrow: 1}}>
@@ -1091,10 +1096,10 @@ const AdminDashboard = () => {
                                 fontSize: '0.72rem',
                                 fontWeight: 700
                               }}>
-                                {listing?.price_formatted || 'Listing'}
+                                {displayPrice}
                               </span>
                               <h4 style={{margin: 0, color: 'var(--color-dark-navy)', fontSize: '1.05rem'}}>
-                                {listing?.address || 'Listing Address'}
+                                {displayAddress}
                               </h4>
                             </div>
                             <p style={{margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--color-text-muted)'}}>
@@ -1107,8 +1112,8 @@ const AdminDashboard = () => {
                             )}
                             <div style={{marginTop: '0.4rem', fontSize: '0.8rem', color: 'var(--color-slate-blue)', display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center'}}>
                               <span><strong>Requested By:</strong> {booking.agent_name} ({booking.agent_phone || booking.agent_id})</span>
-                              <span><strong>Listing Agent:</strong> {listing?.listing_agent_name || 'Syndicate'}</span>
-                              {listing?.seller_contact_name && <span><strong>Seller:</strong> {listing.seller_contact_name}</span>}
+                              <span><strong>Listing Agent:</strong> {displayListingAgent}</span>
+                              {sellerName && <span><strong>Seller:</strong> {sellerName}</span>}
                               {leadId && (
                                 <a 
                                   href={`https://brianburds.followupboss.com/2/people/view/${leadId}`}

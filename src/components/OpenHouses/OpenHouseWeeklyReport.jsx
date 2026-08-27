@@ -85,16 +85,16 @@ const OpenHouseWeeklyReport = ({ onClose }) => {
   const handleExportCsv = () => {
     const headers = ['Date', 'Time Window', 'Listing Address', 'Price', 'Hosting Agent', 'Agent Phone', 'Sisu Listing Agent', 'Seller Contact', 'Status', 'FUB Event ID', 'Notes'];
     const rows = weekBookings.map(b => {
-      const listing = listings.find(l => l.id === b.listing_id);
+      const listing = listings.find(l => l.id === b.listing_id || l.sisu_listing_id === b.listing_id);
       return [
         b.date,
         `"${formatTimeDisplay(b.start_time)} - ${formatTimeDisplay(b.end_time)}"`,
-        `"${listing?.address || ''}"`,
-        `"${listing?.price_formatted || ''}"`,
+        `"${listing?.address || b.listing_address || ''}"`,
+        `"${listing?.price_formatted || b.listing_price || ''}"`,
         `"${b.agent_name}"`,
         `"${b.agent_phone || ''}"`,
-        `"${listing?.listing_agent_name || ''}"`,
-        `"${listing?.seller_contact_name || ''}"`,
+        `"${listing?.listing_agent_name || b.listing_agent_name || ''}"`,
+        `"${listing?.seller_contact_name || b.seller_contact_name || ''}"`,
         b.status.toUpperCase(),
         b.fub_event_id || 'N/A',
         `"${(b.notes || '').replace(/"/g, '""')}"`
@@ -312,7 +312,12 @@ const OpenHouseWeeklyReport = ({ onClose }) => {
                     </thead>
                     <tbody>
                       {dayBookings.map(b => {
-                        const listing = listings.find(l => l.id === b.listing_id);
+                        const listing = listings.find(l => l.id === b.listing_id || l.sisu_listing_id === b.listing_id);
+                        const displayAddress = listing?.address || b.listing_address || 'Address on file';
+                        const displayPrice = listing?.price_formatted || b.listing_price || 'N/A';
+                        const displayListingAgent = listing?.listing_agent_name || b.listing_agent_name || 'Syndicate';
+                        const displaySeller = listing?.seller_contact_name || b.seller_contact_name || 'On file';
+
                         return (
                           <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--color-primary)' }}>
@@ -320,7 +325,7 @@ const OpenHouseWeeklyReport = ({ onClose }) => {
                             </td>
                             <td style={{ padding: '0.75rem' }}>
                               <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)' }}>
-                                {listing?.address || 'Address on file'}
+                                {displayAddress}
                               </div>
                               {b.notes && (
                                 <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
@@ -329,15 +334,15 @@ const OpenHouseWeeklyReport = ({ onClose }) => {
                               )}
                             </td>
                             <td style={{ padding: '0.75rem', whiteSpace: 'nowrap', fontWeight: 600 }}>
-                              {listing?.price_formatted || 'N/A'}
+                              {displayPrice}
                             </td>
                             <td style={{ padding: '0.75rem' }}>
                               <div style={{ fontWeight: 600 }}>{b.agent_name}</div>
                               <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{b.agent_phone || b.agent_id}</div>
                             </td>
                             <td style={{ padding: '0.75rem', fontSize: '0.82rem' }}>
-                              <div><strong>LA:</strong> {listing?.listing_agent_name || 'Syndicate'}</div>
-                              <div style={{ color: 'var(--color-text-muted)' }}><strong>Seller:</strong> {listing?.seller_contact_name || 'On file'}</div>
+                              <div><strong>LA:</strong> {displayListingAgent}</div>
+                              <div style={{ color: 'var(--color-text-muted)' }}><strong>Seller:</strong> {displaySeller}</div>
                             </td>
                             <td style={{ padding: '0.75rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               <span style={{

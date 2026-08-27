@@ -549,7 +549,9 @@ const OpenHouseHub = () => {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {myBookings.map(b => {
-                const listing = listings.find(l => l.id === b.listing_id);
+                const listing = listings.find(l => l.id === b.listing_id || l.sisu_listing_id === b.listing_id);
+                const displayAddress = listing?.address || b.listing_address || 'Listing Address';
+                const displayPrice = listing?.price_formatted || b.listing_price || 'N/A';
 
                 return (
                   <div 
@@ -598,13 +600,13 @@ const OpenHouseHub = () => {
                         </div>
 
                         <h3 style={{ margin: '0.25rem 0', fontSize: '1.2rem', color: 'var(--color-dark-navy)' }}>
-                          {listing?.address || 'Listing Address'}
+                          {displayAddress}
                         </h3>
                         
                         <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
                           <span>📅 <strong>Date:</strong> {b.date}</span>
                           <span>⏰ <strong>Time:</strong> {formatTimeDisplay(b.start_time)} - {formatTimeDisplay(b.end_time)}</span>
-                          <span>💰 <strong>Price:</strong> {listing?.price_formatted || 'N/A'}</span>
+                          <span>💰 <strong>Price:</strong> {displayPrice}</span>
                         </div>
                       </div>
 

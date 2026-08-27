@@ -317,13 +317,18 @@ const INITIAL_SEED_LISTINGS = [
   }
 ];
 
-// Seed initial bookings for immediate testability
+// Seed initial bookings for immediate testability with real team listings
 const INITIAL_SEED_BOOKINGS = [
   {
     id: 'oh-book-1',
-    listing_id: 'sisu-101',
-    agent_id: 'mathys@brianburds.com',
-    agent_name: 'Mathys Camden',
+    listing_id: 'fub-sisu-4245',
+    listing_address: '304 Rio Pinsaqui Ct, El Paso, TX 79932',
+    listing_price: '$680,000',
+    listing_agent_name: 'Angelica Lopez',
+    seller_contact_id: '64948',
+    seller_contact_name: 'Elilina Alba',
+    agent_id: 'melissa@brianburds.com',
+    agent_name: 'Melissa Hernandez',
     agent_phone: '(915) 555-0130',
     date: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0], // Next upcoming Saturday
     start_time: '13:00',
@@ -337,7 +342,12 @@ const INITIAL_SEED_BOOKINGS = [
   },
   {
     id: 'oh-book-2',
-    listing_id: 'sisu-102',
+    listing_id: 'fub-sisu-4723',
+    listing_address: '1076 Haper Ct, El Paso, TX 79932',
+    listing_price: '$290,000',
+    listing_agent_name: 'Carmen Luna',
+    seller_contact_id: '66319',
+    seller_contact_name: 'Alejandro Fierro',
     agent_id: 'alicia@brianburds.com',
     agent_name: 'Alicia Ramos',
     agent_phone: '(915) 555-0145',
@@ -357,18 +367,78 @@ export const OpenHouseProvider = ({ children }) => {
   const { currentUser } = useAuth();
   const { currentAgentData, awardAgentXp } = useAgent();
   
-  const [listings, setListings] = useState(INITIAL_SEED_LISTINGS);
-  const [bookings, setBookings] = useState(INITIAL_SEED_BOOKINGS);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState(() => new Date().toISOString());
-  const [weeklyReportConfig, setWeeklyReportConfig] = useState({
-    deadline_day_of_week: 4, // Thursday (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
-    deadline_time: '17:00', // 5:00 PM
-    coordinator_name: 'Listing Coordinator',
-    coordinator_phone: '+1 (915) 494-7984',
-    coordinator_email: 'admin@brianburds.com',
-    last_report_sent_at: null
+  const [listings, setListings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('syndicate_open_house_listings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.debug('OpenHouseContext: using default listings', e);
+    }
+    return INITIAL_SEED_LISTINGS;
   });
+
+  const [bookings, setBookings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('syndicate_open_house_bookings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.debug('OpenHouseContext: using default bookings', e);
+    }
+    return INITIAL_SEED_BOOKINGS;
+  });
+
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => {
+    try {
+      return localStorage.getItem('syndicate_open_house_last_synced') || new Date().toISOString();
+    } catch (e) {
+      console.debug('OpenHouseContext: using current timestamp for lastSyncedAt', e);
+      return new Date().toISOString();
+    }
+  });
+
+  const [weeklyReportConfig, setWeeklyReportConfig] = useState(() => {
+    const defaultConfig = {
+      deadline_day_of_week: 4, // Thursday (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
+      deadline_time: '17:00', // 5:00 PM
+      coordinator_name: 'Listing Coordinator',
+      coordinator_phone: '+1 (915) 494-7984',
+      coordinator_email: 'admin@brianburds.com',
+      last_report_sent_at: null
+    };
+    try {
+      const saved = localStorage.getItem('syndicate_open_house_config');
+      if (saved) return { ...defaultConfig, ...JSON.parse(saved) };
+    } catch (e) {
+      console.debug('OpenHouseContext: using default weeklyReportConfig', e);
+    }
+    return defaultConfig;
+  });
+
+  // Save bookings to localStorage whenever changed
+  const persistBookings = (newBookings) => {
+    setBookings(newBookings);
+    try {
+      localStorage.setItem('syndicate_open_house_bookings', JSON.stringify(newBookings));
+    } catch (e) {
+      console.warn('Could not persist open house bookings to localStorage:', e);
+    }
+  };
+
+  const persistListings = (newListings) => {
+    setListings(newListings);
+    try {
+      localStorage.setItem('syndicate_open_house_listings', JSON.stringify(newListings));
+    } catch (e) {
+      console.warn('Could not persist open house listings to localStorage:', e);
+    }
+  };
 
   // Helper to convert "HH:MM" (e.g. "13:00") to total minutes from midnight for exact overlap math
   const timeToMinutes = (timeStr) => {
@@ -438,15 +508,18 @@ export const OpenHouseProvider = ({ children }) => {
       if (!supabase) return;
 
       // 1. Listings
-      const { data: dbListings, error: lErr } = await supabase
+      const { data: dbListings } = await supabase
         .from('listings')
         .select('*')
         .order('price', { ascending: false });
 
       if (dbListings && dbListings.length > 0) {
-        setListings(dbListings);
+        persistListings(dbListings);
         const mostRecent = dbListings[0].last_synced_at;
-        if (mostRecent) setLastSyncedAt(mostRecent);
+        if (mostRecent) {
+          setLastSyncedAt(mostRecent);
+          try { localStorage.setItem('syndicate_open_house_last_synced', mostRecent); } catch (e) { console.debug(e); }
+        }
       } else {
         // Check snapshot in global_settings fallback
         const { data: snapshot } = await supabase
@@ -455,18 +528,18 @@ export const OpenHouseProvider = ({ children }) => {
           .eq('id', 'synced_listings_snapshot')
           .single();
         if (snapshot?.data && Array.isArray(snapshot.data)) {
-          setListings(snapshot.data);
+          persistListings(snapshot.data);
         }
       }
 
       // 2. Bookings
-      const { data: dbBookings, error: bErr } = await supabase
+      const { data: dbBookings } = await supabase
         .from('open_house_bookings')
         .select('*')
         .order('date', { ascending: true });
 
       if (dbBookings && dbBookings.length > 0) {
-        setBookings(dbBookings);
+        persistBookings(dbBookings);
       } else {
         // Check global_settings fallback
         const { data: bSnapshot } = await supabase
@@ -475,7 +548,7 @@ export const OpenHouseProvider = ({ children }) => {
           .eq('id', 'open_house_bookings_snapshot')
           .single();
         if (bSnapshot?.data && Array.isArray(bSnapshot.data)) {
-          setBookings(bSnapshot.data);
+          persistBookings(bSnapshot.data);
         }
       }
 
@@ -487,7 +560,9 @@ export const OpenHouseProvider = ({ children }) => {
         .single();
 
       if (dbSettings) {
-        setWeeklyReportConfig(prev => ({ ...prev, ...dbSettings }));
+        const nextCfg = { ...weeklyReportConfig, ...dbSettings };
+        setWeeklyReportConfig(nextCfg);
+        try { localStorage.setItem('syndicate_open_house_config', JSON.stringify(nextCfg)); } catch (e) { console.debug(e); }
       } else {
         const { data: sSnapshot } = await supabase
           .from('global_settings')
@@ -495,11 +570,13 @@ export const OpenHouseProvider = ({ children }) => {
           .eq('id', 'open_house_settings_snapshot')
           .single();
         if (sSnapshot?.data) {
-          setWeeklyReportConfig(prev => ({ ...prev, ...sSnapshot.data }));
+          const nextCfg = { ...weeklyReportConfig, ...sSnapshot.data };
+          setWeeklyReportConfig(nextCfg);
+          try { localStorage.setItem('syndicate_open_house_config', JSON.stringify(nextCfg)); } catch (e) { console.debug(e); }
         }
       }
     } catch (err) {
-      console.warn('Could not load Open House data from Supabase, using seeded state:', err);
+      console.warn('Could not load Open House data from Supabase, using cached state:', err);
     }
   };
 
@@ -519,23 +596,29 @@ export const OpenHouseProvider = ({ children }) => {
       if (res.ok) {
         const data = await res.json();
         if (data.listings && data.listings.length > 0) {
-          setListings(data.listings);
-          setLastSyncedAt(data.syncedAt || new Date().toISOString());
+          persistListings(data.listings);
+          const syncedTime = data.syncedAt || new Date().toISOString();
+          setLastSyncedAt(syncedTime);
+          try { localStorage.setItem('syndicate_open_house_last_synced', syncedTime); } catch (e) { console.debug(e); }
         }
         await loadOpenHouseData();
         return { success: true, count: data.count, source: data.source };
       } else {
         // Client-side fallback if serverless endpoint is offline
         const nowIso = new Date().toISOString();
-        setListings(prev => prev.map(l => ({ ...l, last_synced_at: nowIso })));
+        const updated = listings.map(l => ({ ...l, last_synced_at: nowIso }));
+        persistListings(updated);
         setLastSyncedAt(nowIso);
+        try { localStorage.setItem('syndicate_open_house_last_synced', nowIso); } catch (e) { console.debug(e); }
         return { success: true, count: listings.length, source: 'cached' };
       }
     } catch (err) {
       console.warn('Error invoking /api/open-house/sync-sisu, refreshing cached inventory:', err);
       const nowIso = new Date().toISOString();
-      setListings(prev => prev.map(l => ({ ...l, last_synced_at: nowIso })));
+      const updated = listings.map(l => ({ ...l, last_synced_at: nowIso }));
+      persistListings(updated);
       setLastSyncedAt(nowIso);
+      try { localStorage.setItem('syndicate_open_house_last_synced', nowIso); } catch (e) { console.debug(e); }
       return { success: true, count: listings.length, source: 'cached' };
     } finally {
       setIsSyncing(false);
@@ -551,13 +634,20 @@ export const OpenHouseProvider = ({ children }) => {
       throw new Error(conflictMsg);
     }
 
-    const agentEmail = currentUser?.email || 'agent@brianburds.com';
+    const targetListing = listings.find(l => l.id === listingId || l.sisu_listing_id === listingId);
+
+    const agentEmail = currentUser?.email || currentAgentData?.profile?.email || 'agent@brianburds.com';
     const agentName = currentAgentData?.name || currentUser?.name || 'Syndicate Agent';
     const agentPhone = currentAgentData?.phone || currentAgentData?.profile?.phone || '(915) 555-0130';
 
     const newBooking = {
       id: `oh-book-${Date.now()}`,
       listing_id: listingId,
+      listing_address: targetListing?.address || '',
+      listing_price: targetListing?.price_formatted || '',
+      listing_agent_name: targetListing?.listing_agent_name || '',
+      seller_contact_id: targetListing?.seller_contact_id || null,
+      seller_contact_name: targetListing?.seller_contact_name || '',
       agent_id: agentEmail.toLowerCase().trim(),
       agent_name: agentName,
       agent_phone: agentPhone,
@@ -574,8 +664,9 @@ export const OpenHouseProvider = ({ children }) => {
       created_at: new Date().toISOString()
     };
 
-    // Update state immediately for instant feedback
-    setBookings(prev => [newBooking, ...prev]);
+    // Update state and persist immediately to localStorage for cross-page/emulation persistence
+    const updatedBookings = [newBooking, ...bookings];
+    persistBookings(updatedBookings);
 
     // Persist to Supabase
     if (supabase) {
@@ -584,7 +675,7 @@ export const OpenHouseProvider = ({ children }) => {
         if (error) {
           console.warn('Supabase booking insert error, persisting to global_settings snapshot:', error.message);
           await supabase.from('global_settings').upsert([
-            { id: 'open_house_bookings_snapshot', data: [newBooking, ...bookings] }
+            { id: 'open_house_bookings_snapshot', data: updatedBookings }
           ]);
         }
       } catch (dbErr) {
@@ -600,7 +691,7 @@ export const OpenHouseProvider = ({ children }) => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) throw new Error('Booking not found');
 
-    const listing = listings.find(l => l.id === booking.listing_id);
+    const listing = listings.find(l => l.id === booking.listing_id || l.sisu_listing_id === booking.listing_id);
 
     try {
       const res = await fetch('/api/open-house/approve', {
@@ -634,14 +725,14 @@ export const OpenHouseProvider = ({ children }) => {
         return b;
       });
 
-      setBookings(updatedBookings);
+      persistBookings(updatedBookings);
 
       // Award XP to agent for hosting open house if available
       if (awardAgentXp && booking.agent_id) {
         try {
           await awardAgentXp(booking.agent_id, 50, 'Hosting Team Open House', {
             bookingId,
-            listingAddress: listing?.address || 'Listing',
+            listingAddress: listing?.address || booking.listing_address || 'Listing',
             date: booking.date
           });
         } catch (xpErr) {
@@ -667,7 +758,8 @@ export const OpenHouseProvider = ({ children }) => {
       console.error('Error approving booking:', err);
       // Fallback local update
       const reviewedAt = new Date().toISOString();
-      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'approved', fub_event_id: `fub-${Date.now()}`, reviewed_at: reviewedAt, reviewed_by: reviewerName } : b));
+      const updatedBookings = bookings.map(b => b.id === bookingId ? { ...b, status: 'approved', fub_event_id: `fub-${Date.now()}`, reviewed_at: reviewedAt, reviewed_by: reviewerName } : b);
+      persistBookings(updatedBookings);
       return { success: true, fubEventId: `fub-${Date.now()}` };
     }
   };
@@ -686,7 +778,7 @@ export const OpenHouseProvider = ({ children }) => {
       });
 
       const reviewedAt = new Date().toISOString();
-      setBookings(prev => prev.map(b => {
+      const updatedBookings = bookings.map(b => {
         if (b.id === bookingId) {
           return {
             ...b,
@@ -697,7 +789,9 @@ export const OpenHouseProvider = ({ children }) => {
           };
         }
         return b;
-      }));
+      });
+
+      persistBookings(updatedBookings);
 
       if (supabase) {
         await supabase
@@ -722,6 +816,7 @@ export const OpenHouseProvider = ({ children }) => {
   const updateWeeklyReportConfig = async (newConfig) => {
     const updated = { ...weeklyReportConfig, ...newConfig, updated_at: new Date().toISOString() };
     setWeeklyReportConfig(updated);
+    try { localStorage.setItem('syndicate_open_house_config', JSON.stringify(updated)); } catch (e) { console.debug(e); }
 
     if (supabase) {
       try {
@@ -729,6 +824,7 @@ export const OpenHouseProvider = ({ children }) => {
           .from('open_house_settings')
           .upsert([{ id: 'default', ...updated }], { onConflict: 'id' });
       } catch (err) {
+        console.debug('open_house_settings upsert error, falling back to snapshot:', err);
         await supabase
           .from('global_settings')
           .upsert([{ id: 'open_house_settings_snapshot', data: updated }]);
@@ -745,7 +841,9 @@ export const OpenHouseProvider = ({ children }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        setWeeklyReportConfig(prev => ({ ...prev, last_report_sent_at: data.sentAt || new Date().toISOString() }));
+        const updated = { ...weeklyReportConfig, last_report_sent_at: data.sentAt || new Date().toISOString() };
+        setWeeklyReportConfig(updated);
+        try { localStorage.setItem('syndicate_open_house_config', JSON.stringify(updated)); } catch (e) { console.debug(e); }
         return { success: true, data };
       }
       return { success: true, simulated: true };
@@ -768,7 +866,7 @@ export const OpenHouseProvider = ({ children }) => {
       return l;
     });
 
-    setListings(updatedListings);
+    persistListings(updatedListings);
 
     // Persist to Supabase / snapshot if connected
     if (supabase) {
@@ -785,9 +883,16 @@ export const OpenHouseProvider = ({ children }) => {
 
   // Filtered views
   const currentAgentEmail = (currentUser?.email || '').toLowerCase().trim();
+  const currentAgentName = (currentUser?.name || currentAgentData?.name || '').toLowerCase().trim();
   const myBookings = useMemo(() => {
-    return bookings.filter(b => (b.agent_id || '').toLowerCase().trim() === currentAgentEmail);
-  }, [bookings, currentAgentEmail]);
+    return bookings.filter(b => {
+      const bEmail = (b.agent_id || '').toLowerCase().trim();
+      const bName = (b.agent_name || '').toLowerCase().trim();
+      if (currentAgentEmail && bEmail === currentAgentEmail) return true;
+      if (currentAgentName && (bName.includes(currentAgentName) || currentAgentName.includes(bName))) return true;
+      return false;
+    });
+  }, [bookings, currentAgentEmail, currentAgentName]);
 
   const pendingApprovals = useMemo(() => {
     return bookings.filter(b => b.status === 'pending');
