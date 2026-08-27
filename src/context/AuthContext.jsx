@@ -309,12 +309,23 @@ export const AuthProvider = ({ children }) => {
     setOriginalAdminUser(currentUser);
     localStorage.setItem('mockAdminSession', JSON.stringify(currentUser));
 
+    const agentEmail = (
+      agentProfile.email || 
+      agentProfile.profile?.email || 
+      (typeof agentProfile.id === 'string' && agentProfile.id.includes('@') ? agentProfile.id : '') ||
+      'agent@brianburds.com'
+    ).toLowerCase().trim();
+
+    const agentName = agentProfile.name || (agentProfile.title ? agentProfile.title.replace(' (Demo)', '') : 'Emulated Agent');
+    const agentPhone = agentProfile.phone || agentProfile.profile?.phone || '';
+
     // Create mock agent user from profile
     const emulatedUser = {
-      id: agentProfile.id || `agent-${Date.now()}`,
+      id: agentProfile.id || agentEmail,
       role: 'agent',
-      name: agentProfile.title ? agentProfile.title.replace(' (Demo)', '') : (agentProfile.name || 'Emulated Agent'),
-      email: agentProfile.profile?.email || agentProfile.email || 'agent@example.com'
+      name: agentName,
+      email: agentEmail,
+      phone: agentPhone
     };
 
     setCurrentUser(emulatedUser);

@@ -16,51 +16,8 @@ export const useOpenHouse = () => {
 import { INITIAL_SEED_LISTINGS } from '../utils/seedListings';
 import { bookingToEvent, eventToBooking } from '../utils/openHouseEvents';
 
-// Seed initial bookings for immediate testability with real team listings
-const INITIAL_SEED_BOOKINGS = [
-  {
-    id: 'oh-book-1',
-    listing_id: 'fub-sisu-4245',
-    listing_address: '304 Rio Pinsaqui Ct, El Paso, TX 79932',
-    listing_price: '$680,000',
-    listing_agent_name: 'Angelica Lopez',
-    seller_contact_id: '64948',
-    seller_contact_name: 'Elilina Alba',
-    agent_id: 'melissa@brianburds.com',
-    agent_name: 'Melissa Hernandez',
-    agent_phone: '(915) 555-0130',
-    date: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0], // Next upcoming Saturday
-    start_time: '13:00',
-    end_time: '15:00',
-    status: 'approved',
-    fub_event_id: 'fub-evt-40291',
-    notes: 'Placing 6 directionals on Desert Willow. Digital iPad sign-in prepared.',
-    requested_at: new Date(Date.now() - 86400000).toISOString(),
-    reviewed_at: new Date(Date.now() - 43200000).toISOString(),
-    reviewed_by: 'Listing Coordinator'
-  },
-  {
-    id: 'oh-book-2',
-    listing_id: 'fub-sisu-4723',
-    listing_address: '1076 Haper Ct, El Paso, TX 79932',
-    listing_price: '$290,000',
-    listing_agent_name: 'Carmen Luna',
-    seller_contact_id: '66319',
-    seller_contact_name: 'Alejandro Fierro',
-    agent_id: 'alicia@brianburds.com',
-    agent_name: 'Alicia Ramos',
-    agent_phone: '(915) 555-0145',
-    date: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0], // Next upcoming Sunday
-    start_time: '12:00',
-    end_time: '14:00',
-    status: 'pending',
-    fub_event_id: null,
-    notes: 'Targeting luxury move-up buyers. Custom flyer printed.',
-    requested_at: new Date(Date.now() - 14400000).toISOString(),
-    reviewed_at: null,
-    reviewed_by: null
-  }
-];
+// Real bookings are synced dynamically from Supabase events
+const INITIAL_SEED_BOOKINGS = [];
 
 export const OpenHouseProvider = ({ children }) => {
   const { currentUser } = useAuth();
@@ -249,14 +206,9 @@ export const OpenHouseProvider = ({ children }) => {
 
         if (dbEvents && dbEvents.length > 0) {
           const parsedRemote = dbEvents.map(eventToBooking);
-          const merged = [...parsedRemote];
-          // Keep any local initial seed bookings that haven't conflicted
-          INITIAL_SEED_BOOKINGS.forEach(seedB => {
-            if (!merged.some(m => m.id === seedB.id || (m.listing_id === seedB.listing_id && m.date === seedB.date && m.start_time === seedB.start_time))) {
-              merged.push(seedB);
-            }
-          });
-          persistBookings(merged);
+          persistBookings(parsedRemote);
+        } else {
+          persistBookings([]);
         }
       } catch (evtQueryErr) {
         console.warn('Could not query events table for open house bookings:', evtQueryErr);
@@ -361,9 +313,26 @@ export const OpenHouseProvider = ({ children }) => {
 
     const targetListing = listings.find(l => l.id === listingId || l.sisu_listing_id === listingId);
 
-    const agentEmail = currentUser?.email || currentAgentData?.profile?.email || 'agent@brianburds.com';
-    const agentName = currentAgentData?.name || currentUser?.name || 'Syndicate Agent';
-    const agentPhone = currentAgentData?.phone || currentAgentData?.profile?.phone || '(915) 555-0130';
+    const agentEmail = (
+      currentUser?.email || 
+      currentAgentData?.id || 
+      currentAgentData?.profile?.email || 
+      (typeof currentUser?.id === 'string' && currentUser.id.includes('@') ? currentUser.id : '') ||
+      'agent@brianburds.com'
+    ).toLowerCase().trim();
+
+    const agentName = (
+      currentUser?.name && currentUser.name !== 'Emulated Agent' && currentUser.name !== 'Syndicate Agent' ? currentUser.name : (
+        currentAgentData?.name || currentUser?.name || 'Syndicate Agent'
+      )
+    );
+
+    const agentPhone = (
+      currentUser?.phone || 
+      currentAgentData?.profile?.phone || 
+      currentAgentData?.phone || 
+      '(915) 555-0130'
+    );
 
     const newBooking = {
       id: `oh-book-${Date.now()}`,
