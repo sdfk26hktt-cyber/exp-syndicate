@@ -406,10 +406,10 @@ const OpenHouseHub = () => {
                         </h3>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
-                        <span>🛏️ {listing.bedrooms || 3} Beds</span>
-                        <span>🛁 {listing.bathrooms || 2} Baths</span>
-                        <span>📐 {listing.sqft ? `${listing.sqft.toLocaleString()} sqft` : 'N/A'}</span>
+                      <div style={{ display: 'flex', gap: '0.85rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                        <span>🛏️ {listing.bedrooms !== undefined && listing.bedrooms !== null ? listing.bedrooms : 3} Beds</span>
+                        <span>🛁 {listing.bathrooms !== undefined && listing.bathrooms !== null ? listing.bathrooms : 2} Baths</span>
+                        <span>📐 {listing.sqft ? `${Number(listing.sqft).toLocaleString()} sqft` : 'N/A'}</span>
                       </div>
 
                       <div style={{
@@ -703,8 +703,18 @@ const OpenHouseHub = () => {
                 <h2 style={{ margin: '0.2rem 0', fontSize: '1.25rem', color: 'var(--color-dark-navy)' }}>
                   {selectedListingForBooking.address}
                 </h2>
-                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                  Price: <strong>{selectedListingForBooking.price_formatted}</strong> | Listing Agent: {selectedListingForBooking.listing_agent_name}
+                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span>Price: <strong style={{ color: 'var(--color-dark-navy)' }}>{selectedListingForBooking.price_formatted}</strong></span>
+                  <span>•</span>
+                  <span>🛏️ {selectedListingForBooking.bedrooms ?? 3} Beds</span>
+                  <span>•</span>
+                  <span>🛁 {selectedListingForBooking.bathrooms ?? 2} Baths</span>
+                  {selectedListingForBooking.sqft ? (
+                    <>
+                      <span>•</span>
+                      <span>📐 {Number(selectedListingForBooking.sqft).toLocaleString()} sqft</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <button 

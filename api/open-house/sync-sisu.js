@@ -18,29 +18,140 @@ const HOME_PHOTOS = [
   'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80'
 ];
 
+/**
+ * Fetch and parse all pages of Sierra Interactive featured listings from ephomesonline.com
+ * Extracts MLS ID, main photo CDN URL, price, address, beds, baths, and sqft.
+ */
 async function fetchSierraFeaturedListings() {
-  try {
-    const res = await fetch('https://www.ephomesonline.com/featured-listings/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+  const sierraListings = [];
+  let page = 1;
+  const maxPages = 20;
+
+  while (page <= maxPages) {
+    const url = page === 1 
+      ? 'https://www.ephomesonline.com/featured-listings/' 
+      : `https://www.ephomesonline.com/featured-listings/?pg=${page}`;
+
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      if (!res.ok) break;
+      const html = await res.text();
+
+      // Find all si-listing card blocks
+      const cardRegex = /<div[^>]*class=["'][^"']*si-listing\b[^"']*["'][\s\S]*?(?=<div[^>]*class=["'][^"']*si-listing\b|<\/div>\s*<\/div>\s*<\/div>\s*<div class="si-pagination|$)/gi;
+      const matches = html.match(cardRegex) || [];
+      if (matches.length === 0) break;
+
+      for (const cardHtml of matches) {
+        // 1. MLS Number
+        const mlsAttrMatch = cardHtml.match(/data-mls=["'](\d+)["']/i);
+        const mlsInfoMatch = cardHtml.match(/<div[^>]*class=["']si-listing__info-value["'][^>]*>\s*<span>(\d+)<\/span>\s*<\/div>\s*<div[^>]*class=["']si-listing__info-label["'][^>]*>\s*MLS/i);
+        const mls = mlsAttrMatch ? mlsAttrMatch[1] : (mlsInfoMatch ? mlsInfoMatch[1] : null);
+
+        // 2. Address
+        const streetMatch = cardHtml.match(/<div class="si-listing__title-main">([^<]+)<\/div>/i);
+        const cityStateZipMatch = cardHtml.match(/<div class="si-listing__title-description">([^<]+)<\/div>/i);
+        const street = streetMatch ? streetMatch[1].trim() : '';
+        const cityStateZip = cityStateZipMatch ? cityStateZipMatch[1].trim() : '';
+        const fullAddress = street && cityStateZip ? `${street}, ${cityStateZip}` : (street || cityStateZip);
+
+        // 3. Price
+        const priceAttrMatch = cardHtml.match(/data-price=["'](\d+)["']/i);
+        const priceMainMatch = cardHtml.match(/<div class="si-listing__price-main">\s*([^<]+)\s*<\/div>/i);
+        const priceNum = priceAttrMatch ? parseInt(priceAttrMatch[1], 10) : (priceMainMatch ? parseInt(priceMainMatch[1].replace(/[^0-9]/g, ''), 10) : 0);
+        const priceFormatted = priceMainMatch ? priceMainMatch[1].trim() : (priceNum ? `$${priceNum.toLocaleString()}` : 'Contact Team');
+
+        // 4. Photo CDN URL
+        const photoMatch = cardHtml.match(/data-src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["']/i) ||
+                           cardHtml.match(/src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["']/i);
+        const photo = photoMatch ? photoMatch[1] : null;
+
+        // 5. Bedrooms
+        const bedsMatch = cardHtml.match(/<div class="si-listing__info-value">\s*<span>([^<]+)<\/span>\s*<\/div>\s*<div class="si-listing__info-label">\s*Beds/i);
+        const bedrooms = bedsMatch ? parseFloat(bedsMatch[1].trim()) || 0 : 0;
+
+        // 6. Bathrooms (handles full + half bath format e.g. 2<small>F</small>1<small>1/2</small> or plain number)
+        const bathsBlockMatch = cardHtml.match(/<div class="si-listing__info-value">([\s\S]*?)<\/div>\s*<div class="si-listing__info-label">\s*Baths/i);
+        let bathrooms = 0;
+        if (bathsBlockMatch) {
+          const rawBaths = bathsBlockMatch[1];
+          const fullMatch = rawBaths.match(/(\d+)<small>F<\/small>/i);
+          const halfMatch = rawBaths.match(/(\d+)<small>1\/2<\/small>/i) || rawBaths.match(/<small>1\/2<\/small>/i);
+          const threeQtrMatch = rawBaths.match(/(\d+)<small>3\/4<\/small>/i);
+          const plainMatch = rawBaths.match(/<span>(\d+(?:\.\d+)?)<\/span>/i);
+
+          if (fullMatch) {
+            bathrooms += parseInt(fullMatch[1], 10);
+            if (halfMatch) bathrooms += 0.5;
+            if (threeQtrMatch) bathrooms += 0.75;
+          } else if (plainMatch) {
+            bathrooms = parseFloat(plainMatch[1]);
+          } else {
+            const stripped = rawBaths.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            bathrooms = parseFloat(stripped) || 0;
+          }
+        }
+
+        // 7. Square Footage
+        const sqftMatch = cardHtml.match(/<div class="si-listing__info-value">\s*<span>([^<]+)<\/span>\s*<\/div>\s*<div class="si-listing__info-label">\s*Sq\.Ft\./i);
+        const sqft = sqftMatch ? parseInt(sqftMatch[1].replace(/[^0-9]/g, ''), 10) || 0 : 0;
+
+        // 8. Agent Name
+        const listedByMatch = cardHtml.match(/Listed by <strong>([^<]+)<\/strong>/i);
+        const agentName = listedByMatch ? listedByMatch[1].trim() : 'Brian Burds';
+
+        sierraListings.push({
+          mls,
+          street,
+          cityStateZip,
+          fullAddress,
+          price: priceNum,
+          priceFormatted,
+          photo,
+          bedrooms,
+          bathrooms,
+          sqft,
+          agentName
+        });
       }
-    });
-    if (!res.ok) return new Map();
-    const html = await res.text();
-    const regex = /<img[^>]+data-src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["'][^>]*alt=["']([^"']+)["']/gi;
-    const sierraMap = new Map();
-    let match;
-    while ((match = regex.exec(html)) !== null) {
-      const img = match[1];
-      const fullAddr = match[2];
-      const mls = (img.match(/285_(\d+)_/) || [])[1] || null;
-      sierraMap.set(fullAddr.toLowerCase(), { img, mls, fullAddr });
+
+      // Check if there is a next page
+      const hasNextPage = html.includes(`?pg=${page + 1}`) || html.includes(`href="/featured-listings/?pg=${page + 1}"`);
+      if (!hasNextPage) break;
+      page++;
+    } catch (e) {
+      console.warn(`Error on Sierra page ${page}:`, e.message);
+      break;
     }
-    return sierraMap;
-  } catch (e) {
-    console.warn('Could not fetch Sierra featured listings:', e.message);
-    return new Map();
   }
+
+  return sierraListings;
+}
+
+/**
+ * Match FUB deal against scraped Sierra Interactive listings
+ */
+function findSierraMatch(sierraListings, dealAddress, dealName) {
+  const textToSearch = `${dealAddress} ${dealName}`.toLowerCase();
+  const numMatch = textToSearch.match(/\b(\d{2,6})\b/);
+  const streetNum = numMatch ? numMatch[1] : null;
+
+  for (const s of sierraListings) {
+    const sStreetLower = s.street.toLowerCase();
+    const sNum = sStreetLower.match(/^\d+/)?.[0];
+    
+    if (streetNum && sNum === streetNum) {
+      const sWords = sStreetLower.replace(/^\d+\s*/, '').split(/[\s,]+/).filter(w => w.length > 2);
+      if (sWords.length === 0 || sWords.some(w => textToSearch.includes(w))) {
+        return s;
+      }
+    }
+  }
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -51,10 +162,11 @@ export default async function handler(req, res) {
 
   try {
     let syncedListings = [];
-    let source = 'sisu_fub_live';
+    let source = 'sisu_fub_sierra_live';
 
-    // 0. Fetch live Sierra Interactive featured listings map for MLS photos
-    const sierraMap = await fetchSierraFeaturedListings();
+    // 0. Fetch all pages of Sierra Interactive featured listings
+    const sierraListings = await fetchSierraFeaturedListings();
+    const matchedMlsSet = new Set();
 
     // 1. Pull live Sisu listings via Follow Up Boss Sisu Sellers Pipeline
     if (fubApiKey) {
@@ -95,42 +207,40 @@ export default async function handler(req, res) {
             const fullAddress = `${address}, ${city}, ${state} ${zip}`.replace(/,\s*,/g, ',').trim();
 
             const priceNum = typeof d.price === 'number' ? d.price : (Number(String(d.price).replace(/[^0-9.-]+/g, '')) || 0);
-            const priceFormatted = priceNum > 0 ? `$${priceNum.toLocaleString()}` : 'Contact Team';
 
-            // Match address against Sierra Interactive photos
-            let sierraPhoto = null;
-            let sierraMls = null;
-            for (const [sAddr, data] of sierraMap.entries()) {
-              const dAddrLower = address.toLowerCase();
-              const streetNum = dAddrLower.match(/^\d+/)?.[0];
-              const streetWords = dAddrLower.replace(/^\d+\s*/, '').split(/\s+/).filter(w => w.length > 3);
-              if (streetNum && sAddr.startsWith(streetNum)) {
-                if (streetWords.length === 0 || streetWords.some(w => sAddr.includes(w))) {
-                  sierraPhoto = data.img;
-                  sierraMls = data.mls;
-                  break;
-                }
-              }
+            // Match deal with Sierra for MLS photo, real beds, baths, sqft, MLS #
+            const sierraMatch = findSierraMatch(sierraListings, fullAddress, d.name);
+            if (sierraMatch && sierraMatch.mls) {
+              matchedMlsSet.add(sierraMatch.mls);
             }
 
-            const coverImage = sierraPhoto || HOME_PHOTOS[index % HOME_PHOTOS.length];
+            const bedrooms = sierraMatch && sierraMatch.bedrooms > 0 ? sierraMatch.bedrooms : 4;
+            const bathrooms = sierraMatch && sierraMatch.bathrooms > 0 ? sierraMatch.bathrooms : 2.5;
+            const sqft = sierraMatch && sierraMatch.sqft > 0 
+              ? sierraMatch.sqft 
+              : (priceNum > 400000 ? 3200 : (priceNum > 250000 ? 2400 : 1800));
+
+            const coverImage = sierraMatch?.photo || HOME_PHOTOS[index % HOME_PHOTOS.length];
+            const displayAddress = sierraMatch?.fullAddress || fullAddress;
+            const priceFormatted = priceNum > 0 ? `$${priceNum.toLocaleString()}` : (sierraMatch?.priceFormatted || 'Contact Team');
 
             return {
               id: `fub-sisu-${d.id}`,
-              sisu_listing_id: sierraMls ? `MLS-${sierraMls}` : (d.customSisuTransactionId ? `SISU-${d.customSisuTransactionId}` : `FUB-${d.id}`),
-              address: fullAddress,
-              price: priceNum,
+              sisu_listing_id: sierraMatch?.mls ? `MLS-${sierraMatch.mls}` : (d.customSisuTransactionId ? `SISU-${d.customSisuTransactionId}` : `FUB-${d.id}`),
+              address: displayAddress,
+              price: priceNum || sierraMatch?.price || 0,
               price_formatted: priceFormatted,
               stage: d.stageName,
               listing_agent_id: d.users?.[0]?.email || 'brian@brianburds.com',
-              listing_agent_name: d.users?.[0]?.name || 'Brian Burds',
+              listing_agent_name: d.users?.[0]?.name || sierraMatch?.agentName || 'Brian Burds',
               seller_contact_name: d.people?.[0]?.name || 'Seller',
               seller_contact_id: d.people?.[0]?.id ? String(d.people[0].id) : null,
               seller_phone: '(915) 555-0100',
               status: 'active',
-              bedrooms: 4,
-              bathrooms: 2.5,
-              sqft: priceNum > 400000 ? 3200 : (priceNum > 250000 ? 2400 : 1800),
+              is_available_for_open_house: true,
+              bedrooms,
+              bathrooms,
+              sqft,
               cover_image: coverImage,
               notes: d.customLockboxSerialNumber ? `Lockbox Serial: ${d.customLockboxSerialNumber} | Stage: ${d.stageName}` : `Stage: ${d.stageName}`,
               last_synced_at: new Date().toISOString()
@@ -156,12 +266,23 @@ export default async function handler(req, res) {
         if (sisuRes.ok) {
           const sisuData = await sisuRes.json();
           const items = Array.isArray(sisuData) ? sisuData : (sisuData.data || sisuData.transactions || []);
-          syncedListings = items.map(item => {
+          syncedListings = items.map((item, index) => {
             const priceNum = Number(item.list_price || item.price || item.volume || 0);
+            const address = item.address || item.street_address || item.property_address || 'Address on file';
+            const sierraMatch = findSierraMatch(sierraListings, address, item.client_name || '');
+            if (sierraMatch && sierraMatch.mls) {
+              matchedMlsSet.add(sierraMatch.mls);
+            }
+
+            const bedrooms = (sierraMatch && sierraMatch.bedrooms > 0) ? sierraMatch.bedrooms : (item.bedrooms || 3);
+            const bathrooms = (sierraMatch && sierraMatch.bathrooms > 0) ? sierraMatch.bathrooms : (item.bathrooms || 2);
+            const sqft = (sierraMatch && sierraMatch.sqft > 0) ? sierraMatch.sqft : (item.sqft || item.square_feet || 2000);
+            const coverImage = sierraMatch?.photo || item.photo_url || item.image_url || HOME_PHOTOS[index % HOME_PHOTOS.length];
+
             return {
               id: `sisu-${item.id || item.transaction_id}`,
-              sisu_listing_id: String(item.id || item.listing_number || item.transaction_id),
-              address: item.address || item.street_address || item.property_address || 'Address on file',
+              sisu_listing_id: sierraMatch?.mls ? `MLS-${sierraMatch.mls}` : String(item.id || item.listing_number || item.transaction_id),
+              address: sierraMatch?.fullAddress || address,
               price: priceNum,
               price_formatted: priceNum > 0 ? `$${priceNum.toLocaleString()}` : '$0',
               listing_agent_id: item.agent_email || item.listing_agent_email || item.agent_id || 'admin@brianburds.com',
@@ -170,10 +291,11 @@ export default async function handler(req, res) {
               seller_contact_id: item.fub_contact_id || item.seller_contact_id || null,
               seller_phone: item.client_phone || item.seller_phone || '',
               status: (item.status || 'active').toLowerCase() === 'active' ? 'active' : 'pending',
-              bedrooms: item.bedrooms || 3,
-              bathrooms: item.bathrooms || 2,
-              sqft: item.sqft || item.square_feet || 2000,
-              cover_image: item.photo_url || item.image_url || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80',
+              is_available_for_open_house: true,
+              bedrooms,
+              bathrooms,
+              sqft,
+              cover_image: coverImage,
               notes: item.notes || item.remarks || '',
               last_synced_at: new Date().toISOString()
             };
@@ -183,6 +305,35 @@ export default async function handler(req, res) {
       } catch (err) {
         console.warn('Direct Sisu API error:', err.message);
       }
+    }
+
+    // 3. Add remaining Sierra featured listings from ephomesonline.com that weren't in Sisu deals
+    let addedSierraCount = 0;
+    for (const s of sierraListings) {
+      if (s.mls && matchedMlsSet.has(s.mls)) continue;
+
+      addedSierraCount++;
+      syncedListings.push({
+        id: `sierra-${s.mls || s.street.replace(/\s+/g, '-').toLowerCase()}`,
+        sisu_listing_id: s.mls ? `MLS-${s.mls}` : `SIERRA-${addedSierraCount}`,
+        address: s.fullAddress,
+        price: s.price,
+        price_formatted: s.priceFormatted,
+        stage: 'MLS Live Listings',
+        listing_agent_id: 'brian@brianburds.com',
+        listing_agent_name: s.agentName || 'Brian Burds',
+        seller_contact_name: 'Listing Client',
+        seller_contact_id: null,
+        seller_phone: '(915) 555-0100',
+        status: 'active',
+        is_available_for_open_house: true,
+        bedrooms: s.bedrooms || 3,
+        bathrooms: s.bathrooms || 2,
+        sqft: s.sqft || 1800,
+        cover_image: s.photo || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80',
+        notes: `MLS Live Listing #${s.mls || 'N/A'} from ephomesonline.com`,
+        last_synced_at: new Date().toISOString()
+      });
     }
 
     // Upsert into Supabase if connected
