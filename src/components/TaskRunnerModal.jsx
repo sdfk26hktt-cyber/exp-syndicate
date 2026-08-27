@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronRight, ChevronLeft, CheckCircle, ExternalLink } from 'lucide-react';
 import { useAgent } from '../context/AgentContext';
 import { useAuth } from '../context/AuthContext';
@@ -47,7 +48,7 @@ const TaskRunnerModal = ({ task, phaseId, onClose }) => {
   const stepData = steps[currentStep];
   const progressPercent = Math.round(((currentStep + 1) / steps.length) * 100);
 
-  return (
+  return createPortal(
     <div style={styles.overlay}>
       <div className="animate-fade-in" style={styles.modal}>
         
@@ -107,7 +108,8 @@ const TaskRunnerModal = ({ task, phaseId, onClose }) => {
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { ExternalLink, X } from 'lucide-react';
 
 const ExpLinksModal = ({ isOpen, onClose }) => {
@@ -22,16 +23,20 @@ const ExpLinksModal = ({ isOpen, onClose }) => {
     }
   ];
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(12, 15, 36, 0.4)',
-      backdropFilter: 'blur(4px)',
+      width: '100vw', height: '100vh',
+      backgroundColor: 'rgba(12, 15, 36, 0.5)',
+      backdropFilter: 'blur(6px)',
+      WebkitBackdropFilter: 'blur(6px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 2000,
+      zIndex: 99999,
+      padding: '1rem',
+      boxSizing: 'border-box'
     }} className="animate-fade-in" onClick={onClose}>
       <div 
         style={{
@@ -95,7 +100,8 @@ const ExpLinksModal = ({ isOpen, onClose }) => {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

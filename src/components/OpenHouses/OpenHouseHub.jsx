@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Home, 
   Calendar, 
@@ -666,24 +667,32 @@ const OpenHouseHub = () => {
         </div>
       )}
 
-      {/* Modal: Book Open House with Overlap Collision Detection */}
-      {isModalOpen && selectedListingForBooking && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.65)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999,
-          padding: '1rem'
-        }}>
+      {/* Modal: Book Open House with Overlap Collision Detection (Portaled to Viewport Screen) */}
+      {isModalOpen && selectedListingForBooking && createPortal(
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(12, 15, 36, 0.65)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 99999,
+            padding: '1.25rem',
+            boxSizing: 'border-box'
+          }}
+          onClick={() => setIsModalOpen(false)}
+        >
           <div 
             className="card animate-scale-up" 
+            onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: '540px',
               width: '100%',
@@ -691,7 +700,9 @@ const OpenHouseHub = () => {
               overflowY: 'auto',
               borderRadius: '16px',
               padding: '1.75rem',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+              backgroundColor: 'var(--color-surface, #ffffff)',
+              position: 'relative'
             }}
           >
             {/* Modal Header */}
@@ -970,7 +981,8 @@ const OpenHouseHub = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
