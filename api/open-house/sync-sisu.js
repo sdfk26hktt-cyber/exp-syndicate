@@ -18,6 +18,31 @@ const HOME_PHOTOS = [
   'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80'
 ];
 
+async function fetchSierraFeaturedListings() {
+  try {
+    const res = await fetch('https://www.ephomesonline.com/featured-listings/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+      }
+    });
+    if (!res.ok) return new Map();
+    const html = await res.text();
+    const regex = /<img[^>]+data-src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["'][^>]*alt=["']([^"']+)["']/gi;
+    const sierraMap = new Map();
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      const img = match[1];
+      const fullAddr = match[2];
+      const mls = (img.match(/285_(\d+)_/) || [])[1] || null;
+      sierraMap.set(fullAddr.toLowerCase(), { img, mls, fullAddr });
+    }
+    return sierraMap;
+  } catch (e) {
+    console.warn('Could not fetch Sierra featured listings:', e.message);
+    return new Map();
+  }
+}
+
 export default async function handler(req, res) {
   // Allow GET and POST for sync
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -27,6 +52,9 @@ export default async function handler(req, res) {
   try {
     let syncedListings = [];
     let source = 'sisu_fub_live';
+
+    // 0. Fetch live Sierra Interactive featured listings map for MLS photos
+    const sierraMap = await fetchSierraFeaturedListings();
 
     // 1. Pull live Sisu listings via Follow Up Boss Sisu Sellers Pipeline
     if (fubApiKey) {
@@ -69,9 +97,27 @@ export default async function handler(req, res) {
             const priceNum = typeof d.price === 'number' ? d.price : (Number(String(d.price).replace(/[^0-9.-]+/g, '')) || 0);
             const priceFormatted = priceNum > 0 ? `$${priceNum.toLocaleString()}` : 'Contact Team';
 
+            // Match address against Sierra Interactive photos
+            let sierraPhoto = null;
+            let sierraMls = null;
+            for (const [sAddr, data] of sierraMap.entries()) {
+              const dAddrLower = address.toLowerCase();
+              const streetNum = dAddrLower.match(/^\d+/)?.[0];
+              const streetWords = dAddrLower.replace(/^\d+\s*/, '').split(/\s+/).filter(w => w.length > 3);
+              if (streetNum && sAddr.startsWith(streetNum)) {
+                if (streetWords.length === 0 || streetWords.some(w => sAddr.includes(w))) {
+                  sierraPhoto = data.img;
+                  sierraMls = data.mls;
+                  break;
+                }
+              }
+            }
+
+            const coverImage = sierraPhoto || HOME_PHOTOS[index % HOME_PHOTOS.length];
+
             return {
               id: `fub-sisu-${d.id}`,
-              sisu_listing_id: d.customSisuTransactionId ? `SISU-${d.customSisuTransactionId}` : `FUB-${d.id}`,
+              sisu_listing_id: sierraMls ? `MLS-${sierraMls}` : (d.customSisuTransactionId ? `SISU-${d.customSisuTransactionId}` : `FUB-${d.id}`),
               address: fullAddress,
               price: priceNum,
               price_formatted: priceFormatted,
@@ -85,7 +131,7 @@ export default async function handler(req, res) {
               bedrooms: 4,
               bathrooms: 2.5,
               sqft: priceNum > 400000 ? 3200 : (priceNum > 250000 ? 2400 : 1800),
-              cover_image: HOME_PHOTOS[index % HOME_PHOTOS.length],
+              cover_image: coverImage,
               notes: d.customLockboxSerialNumber ? `Lockbox Serial: ${d.customLockboxSerialNumber} | Stage: ${d.stageName}` : `Stage: ${d.stageName}`,
               last_synced_at: new Date().toISOString()
             };
