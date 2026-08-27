@@ -143,44 +143,45 @@ export default async function handler(req, res) {
     const coordinatorMsg = `✅ Open House Approved: ${agentName} is confirmed for ${listingAddress} on ${dateFormatted} (${timeRange}). FUB Event: ${fubEventId}`;
 
     if (linqApiKey) {
-      try {
-        // Send to hosting agent
-        if (agentPhone) {
-          const linqRes1 = await fetch('https://api.linqapp.com/v1/messages', {
+      const sendLinq = async (toPhone, text) => {
+        if (!toPhone || !text) return false;
+        const cleanTo = toPhone.replace(/[^\d+]/g, '');
+        const normTo = cleanTo.startsWith('+') ? cleanTo : `+1${cleanTo}`;
+        const cleanFrom = (linqFromNumber || '+19154947984').replace(/[^\d+]/g, '');
+        const normFrom = cleanFrom.startsWith('+') ? cleanFrom : `+1${cleanFrom}`;
+
+        try {
+          const res = await fetch('https://api.linqapp.com/api/partner/v3/chats', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${linqApiKey}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              from: linqFromNumber,
-              to: agentPhone,
-              message: agentMsg,
-              preferred_service: 'auto'
+              from: normFrom,
+              to: [normTo],
+              message: {
+                parts: [{ type: 'text', value: text }]
+              }
             })
           });
-          if (linqRes1.ok) linqAgentStatus = 'sent';
+          return res.ok;
+        } catch (e) {
+          console.warn('LinqApp error:', e.message);
+          return false;
         }
+      };
 
-        // Send confirmation to coordinator phone
-        const coordPhone = process.env.COORDINATOR_PHONE || '+19152566989';
-        const linqRes2 = await fetch('https://api.linqapp.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${linqApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            from: linqFromNumber,
-            to: coordPhone,
-            message: coordinatorMsg,
-            preferred_service: 'auto'
-          })
-        });
-        if (linqRes2.ok) linqCoordinatorStatus = 'sent';
-      } catch (linqErr) {
-        console.warn('LinqApp notification error:', linqErr.message);
+      // Send to agent
+      if (agentPhone) {
+        const ok = await sendLinq(agentPhone, agentMsg);
+        if (ok) linqAgentStatus = 'sent';
       }
+
+      // Send to coordinator
+      const coordPhone = process.env.COORDINATOR_PHONE || '+19154947984';
+      const ok2 = await sendLinq(coordPhone, coordinatorMsg);
+      if (ok2) linqCoordinatorStatus = 'sent';
     }
 
     // 3. Update Supabase record

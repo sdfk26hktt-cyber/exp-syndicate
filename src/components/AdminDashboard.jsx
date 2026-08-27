@@ -1237,12 +1237,39 @@ const AdminDashboard = () => {
                       </button>
                     </div>
 
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                      Coordinator Phone: <strong>{weeklyReportConfig.coordinator_phone || '(915) 256-6989'}</strong>
-                      {weeklyReportConfig.last_report_sent_at && (
-                        <span style={{ marginLeft: '0.5rem' }}>• Last Prompt: {new Date(weeklyReportConfig.last_report_sent_at).toLocaleDateString()}</span>
-                      )}
+                    {/* Coordinator Phone & Name Inputs */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.2rem' }}>
+                          Coordinator Phone (for LinqApp SMS)
+                        </label>
+                        <input
+                          type="tel"
+                          value={weeklyReportConfig.coordinator_phone || ''}
+                          placeholder="+1 (915) 494-7984"
+                          onChange={(e) => updateWeeklyReportConfig({ coordinator_phone: e.target.value })}
+                          style={{ ...styles.input, width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.82rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.2rem' }}>
+                          Coordinator Name
+                        </label>
+                        <input
+                          type="text"
+                          value={weeklyReportConfig.coordinator_name || ''}
+                          placeholder="Listing Coordinator"
+                          onChange={(e) => updateWeeklyReportConfig({ coordinator_name: e.target.value })}
+                          style={{ ...styles.input, width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.82rem' }}
+                        />
+                      </div>
                     </div>
+
+                    {weeklyReportConfig.last_report_sent_at && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.4rem' }}>
+                        Last Prompt Sent: {new Date(weeklyReportConfig.last_report_sent_at).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

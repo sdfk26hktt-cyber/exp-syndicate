@@ -38,17 +38,23 @@ export default async function handler(req, res) {
 
     if (linqApiKey && coordinatorPhone) {
       try {
-        const linqRes = await fetch('https://api.linqapp.com/v1/messages', {
+        const cleanTo = coordinatorPhone.replace(/[^\d+]/g, '');
+        const normTo = cleanTo.startsWith('+') ? cleanTo : `+1${cleanTo}`;
+        const cleanFrom = (linqFromNumber || '+19154947984').replace(/[^\d+]/g, '');
+        const normFrom = cleanFrom.startsWith('+') ? cleanFrom : `+1${cleanFrom}`;
+
+        const linqRes = await fetch('https://api.linqapp.com/api/partner/v3/chats', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${linqApiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            from: linqFromNumber,
-            to: coordinatorPhone,
-            message,
-            preferred_service: 'auto'
+            from: normFrom,
+            to: [normTo],
+            message: {
+              parts: [{ type: 'text', value: message }]
+            }
           })
         });
         if (linqRes.ok) linqStatus = 'sent';

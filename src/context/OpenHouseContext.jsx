@@ -160,7 +160,7 @@ export const OpenHouseProvider = ({ children }) => {
     deadline_day_of_week: 4, // Thursday (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
     deadline_time: '17:00', // 5:00 PM
     coordinator_name: 'Listing Coordinator',
-    coordinator_phone: '+19152566989',
+    coordinator_phone: '+1 (915) 494-7984',
     coordinator_email: 'admin@brianburds.com',
     last_report_sent_at: null
   });
