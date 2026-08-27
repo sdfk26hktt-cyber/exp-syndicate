@@ -30,7 +30,8 @@ const AdminDashboard = () => {
     currentAgentData,
     awardAgentXp,
     gamificationSettings,
-    updateGamificationSettings
+    updateGamificationSettings,
+    loadAgents
   } = useAgent();
   const { events, posts, addPost, updatePost, deletePost, addEvent, updateEvent, deleteEvent, approveEvent, rejectEvent, chats, sendMessage } = useCommunity();
   const userName = currentAgentData?.name || currentUser?.name || currentUser?.email || 'Admin';
@@ -64,33 +65,42 @@ const AdminDashboard = () => {
     ];
 
     try {
-      // 1. Try public.admins table
-      const { data, error } = await supabase.from('admins').select('*');
-      if (!error && Array.isArray(data) && data.length > 0) {
-        const combined = [...currentAdmins];
-        data.forEach(item => {
-          if (!combined.some(a => a.email.toLowerCase() === item.email.toLowerCase())) {
-            combined.push(item);
+      // 1. Fetch from live agents table where status = 'admin' or role = 'Administrator'
+      const { data: dbAgents, error: agentErr } = await supabase.from('agents').select('*');
+      if (!agentErr && Array.isArray(dbAgents)) {
+        dbAgents.forEach(agent => {
+          const isAgentAdmin = agent.status === 'admin' || agent.profile?.role === 'Administrator' || agent.role === 'admin';
+          const email = (agent.id || agent.email || '').toLowerCase().trim();
+          if (isAgentAdmin && email && !currentAdmins.some(a => a.email.toLowerCase() === email)) {
+            currentAdmins.push({
+              email,
+              name: agent.name || email.split('@')[0],
+              role: 'Administrator',
+              phone: agent.profile?.phone || agent.phone || '',
+              status: 'Active'
+            });
           }
         });
-        currentAdmins = combined;
-      } else {
-        // 2. Fallback to global_settings snapshot
-        const { data: snapshot } = await supabase
-          .from('global_settings')
-          .select('*')
-          .eq('id', 'syndicate_admins_snapshot')
-          .single();
-        if (snapshot?.data && Array.isArray(snapshot.data)) {
-          const combined = [...currentAdmins];
-          snapshot.data.forEach(item => {
-            const email = typeof item === 'string' ? item : item.email;
-            if (email && !combined.some(a => a.email.toLowerCase() === email.toLowerCase())) {
-              combined.push(typeof item === 'string' ? { email, name: email.split('@')[0] } : item);
+      }
+
+      // 2. Try public.admins table if it exists
+      try {
+        const { data: dbAdmins } = await supabase.from('admins').select('*');
+        if (Array.isArray(dbAdmins)) {
+          dbAdmins.forEach(item => {
+            const email = (item.email || '').toLowerCase().trim();
+            if (email && !currentAdmins.some(a => a.email.toLowerCase() === email)) {
+              currentAdmins.push({
+                email,
+                name: item.name || email.split('@')[0],
+                role: 'Administrator',
+                status: 'Active'
+              });
             }
           });
-          currentAdmins = combined;
         }
+      } catch (e) {
+        // ignore
       }
     } catch (err) {
       console.debug('Error fetching admins from Supabase:', err);
@@ -119,41 +129,7 @@ const AdminDashboard = () => {
       created_at: new Date().toISOString()
     };
 
-    // 1. Try inserting into admins table
-    try {
-      await supabase.from('admins').upsert([adminObj], { onConflict: 'email' });
-    } catch (tableErr) {
-      console.debug('admins table not available, using snapshot fallback:', tableErr);
-    }
-
-    // 2. Update global_settings snapshot
-    const updatedList = [...adminsList];
-    const existingIndex = updatedList.findIndex(a => a.email.toLowerCase() === normalizedEmail);
-    if (existingIndex >= 0) {
-      updatedList[existingIndex] = { ...updatedList[existingIndex], ...adminObj };
-    } else {
-      updatedList.push(adminObj);
-    }
-
-    try {
-      await supabase.from('global_settings').upsert([{
-        id: 'syndicate_admins_snapshot',
-        data: updatedList,
-        updated_at: new Date().toISOString()
-      }], { onConflict: 'id' });
-    } catch (snapshotErr) {
-      console.debug('global_settings admin snapshot fallback:', snapshotErr);
-    }
-
-    // 3. Update localStorage and state
-    try {
-      localStorage.setItem('syndicate_admins_list', JSON.stringify(updatedList));
-    } catch (e) {
-      console.debug(e);
-    }
-    setAdminsList(updatedList);
-
-    // 4. Ensure agent record exists with status 'admin'
+    // 1. Ensure agent record exists with status 'admin'
     try {
       await supabase.from('agents').upsert([{
         id: normalizedEmail,
@@ -164,6 +140,37 @@ const AdminDashboard = () => {
       }], { onConflict: 'id' });
     } catch (agentErr) {
       console.debug('agents table upsert notice for admin:', agentErr);
+    }
+
+    // 2. Try inserting into admins table
+    try {
+      await supabase.from('admins').upsert([adminObj], { onConflict: 'email' });
+    } catch (tableErr) {
+      console.debug('admins table not available:', tableErr);
+    }
+
+    // 3. Reload agents in global React context
+    if (typeof loadAgents === 'function') {
+      try {
+        await loadAgents();
+      } catch (loadErr) {
+        console.debug('loadAgents error:', loadErr);
+      }
+    }
+
+    // 4. Update local state and localStorage
+    const updatedList = [...adminsList];
+    const existingIndex = updatedList.findIndex(a => a.email.toLowerCase() === normalizedEmail);
+    if (existingIndex >= 0) {
+      updatedList[existingIndex] = { ...updatedList[existingIndex], ...adminObj, role: 'Administrator' };
+    } else {
+      updatedList.push({ ...adminObj, role: 'Administrator' });
+    }
+    setAdminsList(updatedList);
+    try {
+      localStorage.setItem('syndicate_admins_list', JSON.stringify(updatedList));
+    } catch (e) {
+      console.debug(e);
     }
 
     // 5. Auth signup if password provided
@@ -218,23 +225,29 @@ const AdminDashboard = () => {
       return;
     }
     try {
+      // 1. Update agents table status from 'admin' to 'onboarding'
+      try {
+        await supabase.from('agents').update({ status: 'onboarding', profile: { role: 'Agent' } }).ilike('id', normalized);
+      } catch (e) {
+        console.debug(e);
+      }
+
+      // 2. Try deleting from admins table
       try {
         await supabase.from('admins').delete().eq('email', normalized);
       } catch (e) {
         console.debug(e);
       }
 
-      const updatedList = adminsList.filter(a => a.email.toLowerCase() !== normalized);
-      try {
-        await supabase.from('global_settings').upsert([{
-          id: 'syndicate_admins_snapshot',
-          data: updatedList,
-          updated_at: new Date().toISOString()
-        }], { onConflict: 'id' });
-      } catch (e) {
-        console.debug(e);
+      if (typeof loadAgents === 'function') {
+        try {
+          await loadAgents();
+        } catch (loadErr) {
+          console.debug(loadErr);
+        }
       }
 
+      const updatedList = adminsList.filter(a => a.email.toLowerCase() !== normalized);
       try {
         localStorage.setItem('syndicate_admins_list', JSON.stringify(updatedList));
       } catch (e) {
@@ -388,6 +401,7 @@ const AdminDashboard = () => {
   const [eventFilterYear, setEventFilterYear] = useState(new Date().getFullYear().toString());
   
   const [expandedAgentGroups, setExpandedAgentGroups] = useState({
+    admin: true,
     onboarding: true,
     flex_agent: false,
     team_agent: false
@@ -820,7 +834,7 @@ const AdminDashboard = () => {
           <div className="flex justify-end mb-4">
             <button className="btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
               <UserPlus size={18} />
-              Add Agent
+              Add User / Admin
             </button>
           </div>
 
@@ -914,7 +928,9 @@ const AdminDashboard = () => {
                 </div>
                   </>
               )}
-                <button type="submit" className="btn-primary" style={{backgroundColor: 'var(--color-dark-navy)', marginTop: '1rem'}}>Invite Agent</button>
+                <button type="submit" className="btn-primary" style={{backgroundColor: 'var(--color-dark-navy)', marginTop: '1rem'}}>
+                  {newUserRole === 'admin' ? 'Add Administrator' : 'Invite Agent'}
+                </button>
               </form>
             </div>
           )}
@@ -939,13 +955,14 @@ const AdminDashboard = () => {
                 </thead>
                 <tbody>
 
-                  {['onboarding', 'flex_agent', 'team_agent'].map(groupKey => {
-                    const groupTitle = groupKey === 'onboarding' ? 'Onboarding' : groupKey === 'flex_agent' ? 'Flex Agents' : 'Team Agents';
+                  {['admin', 'onboarding', 'flex_agent', 'team_agent'].map(groupKey => {
+                    const groupTitle = groupKey === 'admin' ? 'Administrators' : groupKey === 'onboarding' ? 'Onboarding' : groupKey === 'flex_agent' ? 'Flex Agents' : 'Team Agents';
                     const groupAgents = agents.filter(a => {
-                      const s = a.status || 'onboarding';
+                      const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : 'onboarding');
+                      if (groupKey === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
                       if (groupKey === 'flex_agent') return s === 'flex_agent';
                       if (groupKey === 'team_agent') return s === 'team_agent';
-                      return s !== 'flex_agent' && s !== 'team_agent';
+                      return s !== 'flex_agent' && s !== 'team_agent' && s !== 'admin' && a.profile?.role !== 'Administrator';
                     });
                     
                     return (
@@ -960,7 +977,7 @@ const AdminDashboard = () => {
                         </tr>
                         {expandedAgentGroups[groupKey] && groupAgents.length === 0 && (
                           <tr>
-                            <td colSpan="5" style={{...styles.roleTd, textAlign: 'center', color: 'var(--color-text-muted)'}}>No agents in this group.</td>
+                            <td colSpan="5" style={{...styles.roleTd, textAlign: 'center', color: 'var(--color-text-muted)'}}>No users in this group.</td>
                           </tr>
                         )}
                         {expandedAgentGroups[groupKey] && groupAgents.map(a => (
@@ -981,11 +998,12 @@ const AdminDashboard = () => {
                             <td style={styles.roleTd}>{a.id}</td>
                             <td style={styles.roleTd}>
                               <select 
-                                value={a.status || 'onboarding'} 
+                                value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : 'onboarding')} 
                                 onChange={(e) => updateAgentStatus(a.id, e.target.value)}
                                 style={styles.roleSelect}
                                 onClick={(e) => e.stopPropagation()}
                               >
+                                <option value="admin">Administrator</option>
                                 <option value="onboarding">Onboarding</option>
                                 <option value="flex_agent">Flex Agent</option>
                                 <option value="team_agent">Team Agent</option>
