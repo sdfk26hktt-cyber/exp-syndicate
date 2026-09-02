@@ -85,13 +85,30 @@ export const OpenHouseProvider = ({ children }) => {
     return defaultConfig;
   });
 
-  // Save bookings to localStorage whenever changed
-  const persistBookings = (newBookings) => {
+  // Save bookings to state, localStorage, and Supabase cloud system config
+  const persistBookings = async (newBookings) => {
     setBookings(newBookings);
     try {
       localStorage.setItem('syndicate_open_house_bookings', JSON.stringify(newBookings));
     } catch (e) {
       console.warn('Could not persist open house bookings to localStorage:', e);
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('agents').upsert([{
+          id: '__SYSTEM_CONFIG_OPEN_HOUSES__',
+          name: 'Open House Bookings Config',
+          status: 'system',
+          profile: {
+            bookings: newBookings,
+            last_updated_at: new Date().toISOString(),
+            total_count: newBookings.length
+          }
+        }]);
+      } catch (err) {
+        console.warn('Error saving open house bookings to Supabase:', err);
+      }
     }
   };
 
@@ -184,12 +201,12 @@ export const OpenHouseProvider = ({ children }) => {
     return { hasConflict: false, conflict: null };
   }, [bookings, listings]);
 
-  // Load Open House data from Supabase on mount
+  // Load bookings and listings from Supabase on mount
   const loadOpenHouseData = async () => {
-    try {
-      if (!supabase) return;
+    if (!supabase) return;
 
-      // 1. Listings from cloud system config row
+    try {
+      // 1. Listings - Load from Supabase system config (__SYSTEM_CONFIG_LISTINGS__)
       try {
         const { data: configRow } = await supabase
           .from('agents')
@@ -213,22 +230,24 @@ export const OpenHouseProvider = ({ children }) => {
         console.debug('Cloud listing config load fallback:', listErr);
       }
 
-      // 2. Bookings - Query from live Supabase events table
+      // 2. Bookings - Load from Supabase system config (__SYSTEM_CONFIG_OPEN_HOUSES__), isolated from training calendar events
       try {
-        const { data: dbEvents, error: evtErr } = await supabase
-          .from('events')
+        const { data: configRow } = await supabase
+          .from('agents')
           .select('*')
-          .or('type.eq.Open House Request,type.eq.Open House,id.like.oh-%')
-          .order('date', { ascending: true });
+          .eq('id', '__SYSTEM_CONFIG_OPEN_HOUSES__')
+          .single();
 
-        if (dbEvents && dbEvents.length > 0) {
-          const parsedRemote = dbEvents.map(eventToBooking);
-          persistBookings(parsedRemote);
-        } else {
-          persistBookings([]);
+        if (configRow?.profile?.bookings && Array.isArray(configRow.profile.bookings)) {
+          setBookings(configRow.profile.bookings);
+          try {
+            localStorage.setItem('syndicate_open_house_bookings', JSON.stringify(configRow.profile.bookings));
+          } catch (e) {
+            console.debug(e);
+          }
         }
       } catch (evtQueryErr) {
-        console.warn('Could not query events table for open house bookings:', evtQueryErr);
+        console.warn('Could not query open house bookings from system config:', evtQueryErr);
       }
 
       // 3. Settings fallback
@@ -259,10 +278,10 @@ export const OpenHouseProvider = ({ children }) => {
     if (supabase) {
       try {
         const channel = supabase
-          .channel('open_house_realtime_events')
+          .channel('open_house_realtime_configs')
           .on(
             'postgres_changes',
-            { event: '*', schema: 'public', table: 'events' },
+            { event: '*', schema: 'public', table: 'agents' },
             () => {
               loadOpenHouseData();
             }
@@ -375,27 +394,14 @@ export const OpenHouseProvider = ({ children }) => {
       created_at: new Date().toISOString()
     };
 
-    // Update state and persist immediately to localStorage for cross-page/emulation persistence
+    // Update state and persist immediately to localStorage and Supabase cloud system config
     const updatedBookings = [newBooking, ...bookings];
     persistBookings(updatedBookings);
-
-    // Persist to Supabase events table (cloud synced across all agents & admin)
-    if (supabase) {
-      try {
-        const evtPayload = bookingToEvent(newBooking);
-        const { error: evtErr } = await supabase.from('events').insert([evtPayload]);
-        if (evtErr) {
-          console.warn('Supabase events insert error:', evtErr.message);
-        }
-      } catch (dbErr) {
-        console.warn('Error persisting booking event to DB:', dbErr);
-      }
-    }
 
     return newBooking;
   };
 
-  // Approve a booking (creates FUB event, sends LinqApp text, updates status)
+  // Approve a booking (updates status, sends LinqApp text, awards XP)
   const approveBooking = async (bookingId, reviewerName = 'Listing Coordinator') => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) throw new Error('Booking not found');
@@ -421,17 +427,15 @@ export const OpenHouseProvider = ({ children }) => {
       }
 
       const reviewedAt = new Date().toISOString();
-      let updatedBookingObj = null;
       const updatedBookings = bookings.map(b => {
         if (b.id === bookingId) {
-          updatedBookingObj = {
+          return {
             ...b,
             status: 'approved',
             fub_event_id: fubEventId,
             reviewed_at: reviewedAt,
             reviewed_by: reviewerName
           };
-          return updatedBookingObj;
         }
         return b;
       });
@@ -448,18 +452,6 @@ export const OpenHouseProvider = ({ children }) => {
           });
         } catch (xpErr) {
           console.warn('Could not auto-award XP:', xpErr);
-        }
-      }
-
-      // Persist status update to Supabase events table
-      if (supabase && updatedBookingObj) {
-        try {
-          await supabase
-            .from('events')
-            .update(bookingToEvent(updatedBookingObj))
-            .eq('id', bookingId);
-        } catch (dbErr) {
-          console.warn('Error updating approved booking in events table:', dbErr);
         }
       }
 
@@ -488,33 +480,20 @@ export const OpenHouseProvider = ({ children }) => {
       });
 
       const reviewedAt = new Date().toISOString();
-      let updatedBookingObj = null;
       const updatedBookings = bookings.map(b => {
         if (b.id === bookingId) {
-          updatedBookingObj = {
+          return {
             ...b,
             status: 'rejected',
             rejection_reason: reason,
             reviewed_at: reviewedAt,
             reviewed_by: reviewerName
           };
-          return updatedBookingObj;
         }
         return b;
       });
 
       persistBookings(updatedBookings);
-
-      if (supabase && updatedBookingObj) {
-        try {
-          await supabase
-            .from('events')
-            .update(bookingToEvent(updatedBookingObj))
-            .eq('id', bookingId);
-        } catch (dbErr) {
-          console.warn('Error updating rejected booking in events table:', dbErr);
-        }
-      }
 
       return { success: true };
     } catch (err) {

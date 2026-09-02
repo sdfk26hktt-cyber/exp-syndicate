@@ -43,10 +43,19 @@ export default async function handler(req, res) {
       };
       const offset = isDST() ? 6 : 7;
       const utcDate = new Date(Date.UTC(y, m - 1, d, h + offset, min));
-      return [utcDate.getUTCFullYear(), utcDate.getUTCMonth() + 1, utcDate.getUTCDate(), utcDate.getUTCHours(), utcDate.getUTCMinutes()];
-    };
+    // Filter out open house events completely so they never sync to people's calendars or block schedules
+    const trainingEvents = (events || []).filter(evt => {
+      if (!evt) return false;
+      const type = (evt.type || '').toLowerCase();
+      const title = (evt.title || '').toLowerCase();
+      const id = String(evt.id || '');
+      if (id.startsWith('oh-') || type.includes('open house') || title.startsWith('open house:')) {
+        return false;
+      }
+      return true;
+    });
 
-    const icsEvents = events.reduce((acc, evt) => {
+    const icsEvents = trainingEvents.reduce((acc, evt) => {
       // Parse the date (YYYY-MM-DD) and time (HH:MM)
       let year = NaN, month = NaN, day = NaN;
       if (evt.date && typeof evt.date === 'string' && evt.date.includes('-')) {

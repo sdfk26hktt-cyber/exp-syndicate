@@ -38,21 +38,28 @@ export const CommunityProvider = ({ children }) => {
     }
 
     if (eventsRes.data) {
-      setEvents(eventsRes.data.map(e => ({
-        id: e.id,
-        title: e.title,
-        date: e.date,
-        time: e.time,
-        endTime: e.end_time,
-        location: e.location,
-        description: e.description,
-        status: e.status,
-        type: e.type,
-        instructor: e.instructor || '',
-        submitted_by: e.submitted_by || e.submittedBy || '',
-        submittedBy: e.submitted_by || e.submittedBy || '',
-        attendees: e.attendees || []
-      })).sort((a, b) => new Date(a.date) - new Date(b.date)));
+      setEvents(eventsRes.data
+        .filter(e => {
+          const type = (e.type || '').toLowerCase();
+          const id = String(e.id || '');
+          const title = (e.title || '').toLowerCase();
+          return !id.startsWith('oh-') && !type.includes('open house') && !title.startsWith('open house:');
+        })
+        .map(e => ({
+          id: e.id,
+          title: e.title,
+          date: e.date,
+          time: e.time,
+          endTime: e.end_time,
+          location: e.location,
+          description: e.description,
+          status: e.status,
+          type: e.type,
+          instructor: e.instructor || '',
+          submitted_by: e.submitted_by || e.submittedBy || '',
+          submittedBy: e.submitted_by || e.submittedBy || '',
+          attendees: e.attendees || []
+        })).sort((a, b) => new Date(a.date) - new Date(b.date)));
     }
 
     const savedChats = JSON.parse(localStorage.getItem('mockCommunityChats'));

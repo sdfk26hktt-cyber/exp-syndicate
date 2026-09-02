@@ -70,26 +70,24 @@ export default async function handler(req, res) {
     let linqAgentStatus = 'simulated';
     let linqCoordinatorStatus = 'simulated';
 
-    // 1. Follow Up Boss Event / Appointment Creation
+    // 1. Follow Up Boss Lead Note / Activity Logging (No Calendar Appointments)
     if (fubApiKey) {
       try {
         const authHeader = `Basic ${Buffer.from(`${fubApiKey}:`).toString('base64')}`;
         
-        // Build ISO start & end times
-        const startIso = `${booking.date}T${booking.start_time}:00`;
-        const endIso = `${booking.date}T${booking.end_time}:00`;
-
-        const appointmentPayload = {
-          title: `Open House: ${listingAddress}`,
-          start: startIso,
-          end: endIso,
-          location: listingAddress,
-          description: `eXp Syndicate Open House\nHosting Agent: ${agentName} (${booking.agent_id})\nSeller: ${sellerName}\nNotes: ${booking.notes || 'None'}\nApproved By: ${reviewer}`,
-          type: 'Open House',
-          personId: sellerContactId ? Number(sellerContactId.replace(/\D/g, '')) || undefined : undefined
+        // Log as a general event / activity on the lead record without creating a calendar appointment
+        const eventPayload = {
+          source: fubSystemName,
+          system: fubSystemName,
+          type: 'General',
+          message: `Open House Approved: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${agentName} (Approved by ${reviewer})`,
+          person: {
+            contacted: false,
+            name: sellerName
+          }
         };
 
-        const fubRes = await fetch('https://api.followupboss.com/v1/appointments', {
+        const evtRes = await fetch('https://api.followupboss.com/v1/events', {
           method: 'POST',
           headers: {
             'Authorization': authHeader,
@@ -97,41 +95,13 @@ export default async function handler(req, res) {
             'X-System-Key': fubSystemKey,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(appointmentPayload)
+          body: JSON.stringify(eventPayload)
         });
 
-        if (fubRes.ok) {
-          const fubData = await fubRes.json();
-          fubEventId = String(fubData.id || fubData.appointment?.id || fubEventId);
-          fubStatus = 'created';
-        } else {
-          console.warn(`FUB API appointment returned ${fubRes.status}, falling back to event API.`);
-          // Try /v1/events as fallback
-          const eventPayload = {
-            source: fubSystemName,
-            system: fubSystemName,
-            type: 'General',
-            message: `Open House Scheduled: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${agentName}`,
-            person: {
-              contacted: false,
-              name: sellerName
-            }
-          };
-          const evtRes = await fetch('https://api.followupboss.com/v1/events', {
-            method: 'POST',
-            headers: {
-              'Authorization': authHeader,
-              'X-System': fubSystemName,
-              'X-System-Key': fubSystemKey,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(eventPayload)
-          });
-          if (evtRes.ok) {
-            const evtData = await evtRes.json();
-            fubEventId = String(evtData.id || fubEventId);
-            fubStatus = 'event_logged';
-          }
+        if (evtRes.ok) {
+          const evtData = await evtRes.json();
+          fubEventId = String(evtData.id || fubEventId);
+          fubStatus = 'event_logged';
         }
       } catch (fubErr) {
         console.warn('FUB API integration error:', fubErr.message);
@@ -139,8 +109,8 @@ export default async function handler(req, res) {
     }
 
     // 2. LinqApp Text Notifications
-    const agentMsg = `🏠 eXp Syndicate: Your Open House booking for ${listingAddress} on ${dateFormatted} (${timeRange}) has been APPROVED! The event is now live on the Follow Up Boss calendar. Good luck with the open house!`;
-    const coordinatorMsg = `✅ Open House Approved: ${agentName} is confirmed for ${listingAddress} on ${dateFormatted} (${timeRange}). FUB Event: ${fubEventId}`;
+    const agentMsg = `🏠 eXp Syndicate: Your Open House booking for ${listingAddress} on ${dateFormatted} (${timeRange}) has been APPROVED! Good luck with the open house!`;
+    const coordinatorMsg = `✅ Open House Approved: ${agentName} is confirmed for ${listingAddress} on ${dateFormatted} (${timeRange}).`;
 
     if (linqApiKey) {
       const sendLinq = async (toPhone, text) => {
