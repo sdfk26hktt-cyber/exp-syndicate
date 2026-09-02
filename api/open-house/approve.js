@@ -70,24 +70,62 @@ export default async function handler(req, res) {
     let linqAgentStatus = 'simulated';
     let linqCoordinatorStatus = 'simulated';
 
-    // 1. Follow Up Boss Lead Note / Activity Logging (No Calendar Appointments)
+    // 1. Follow Up Boss Calendar Appointment Sync to Listing Owner / Contact
     if (fubApiKey) {
       try {
         const authHeader = `Basic ${Buffer.from(`${fubApiKey}:`).toString('base64')}`;
         
-        // Log as a general event / activity on the lead record without creating a calendar appointment
-        const eventPayload = {
-          source: fubSystemName,
-          system: fubSystemName,
-          type: 'General',
-          message: `Open House Approved: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${agentName} (Approved by ${reviewer})`,
-          person: {
-            contacted: false,
-            name: sellerName
+        let assignedUserId = null;
+        let numericPersonId = null;
+
+        if (sellerContactId) {
+          const cleanId = String(sellerContactId).replace(/\D/g, '');
+          if (cleanId) {
+            numericPersonId = Number(cleanId);
+            try {
+              const personRes = await fetch(`https://api.followupboss.com/v1/people/${numericPersonId}`, {
+                headers: {
+                  'Authorization': authHeader,
+                  'X-System': fubSystemName,
+                  'X-System-Key': fubSystemKey
+                }
+              });
+              if (personRes.ok) {
+                const personData = await personRes.json();
+                if (personData.assignedUserId) {
+                  assignedUserId = personData.assignedUserId;
+                }
+              }
+            } catch (pErr) {
+              console.warn('Could not lookup person in FUB:', pErr.message);
+            }
           }
+        }
+
+        // Build invitees array with seller contact and assigned listing owner user
+        const invitees = [];
+        if (numericPersonId) {
+          invitees.push({ personId: numericPersonId });
+        }
+        if (assignedUserId) {
+          invitees.push({ userId: Number(assignedUserId) });
+        }
+
+        // Create FUB appointment synced directly to owner's calendar
+        const startIso = `${booking.date}T${booking.start_time}:00`;
+        const endIso = `${booking.date}T${booking.end_time}:00`;
+
+        const appointmentPayload = {
+          title: `Open House: ${listingAddress}`,
+          description: `eXp Syndicate Open House\nHosting Agent: ${agentName} (${agentPhone || 'No Phone'})\nSeller: ${sellerName}\nNotes: ${booking.notes || 'None'}\nApproved By: ${reviewer}`,
+          start: startIso,
+          end: endIso,
+          location: listingAddress,
+          allDay: false,
+          invitees: invitees
         };
 
-        const evtRes = await fetch('https://api.followupboss.com/v1/events', {
+        const apptRes = await fetch('https://api.followupboss.com/v1/appointments', {
           method: 'POST',
           headers: {
             'Authorization': authHeader,
@@ -95,13 +133,43 @@ export default async function handler(req, res) {
             'X-System-Key': fubSystemKey,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(eventPayload)
+          body: JSON.stringify(appointmentPayload)
         });
 
-        if (evtRes.ok) {
-          const evtData = await evtRes.json();
-          fubEventId = String(evtData.id || fubEventId);
-          fubStatus = 'event_logged';
+        if (apptRes.ok) {
+          const apptData = await apptRes.json();
+          fubEventId = String(apptData.id || apptData.appointment?.id || fubEventId);
+          fubStatus = 'created';
+        } else {
+          console.warn(`FUB appointment creation status ${apptRes.status}, fallback to event log.`);
+          // Fallback to /v1/events if appointment fails
+          const eventPayload = {
+            source: fubSystemName,
+            system: fubSystemName,
+            type: 'General',
+            message: `Open House Approved: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${agentName} (Approved by ${reviewer})`,
+            person: {
+              contacted: false,
+              name: sellerName
+            }
+          };
+
+          const evtRes = await fetch('https://api.followupboss.com/v1/events', {
+            method: 'POST',
+            headers: {
+              'Authorization': authHeader,
+              'X-System': fubSystemName,
+              'X-System-Key': fubSystemKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(eventPayload)
+          });
+
+          if (evtRes.ok) {
+            const evtData = await evtRes.json();
+            fubEventId = String(evtData.id || fubEventId);
+            fubStatus = 'event_logged';
+          }
         }
       } catch (fubErr) {
         console.warn('FUB API integration error:', fubErr.message);
@@ -109,8 +177,8 @@ export default async function handler(req, res) {
     }
 
     // 2. LinqApp Text Notifications
-    const agentMsg = `🏠 eXp Syndicate: Your Open House booking for ${listingAddress} on ${dateFormatted} (${timeRange}) has been APPROVED! Good luck with the open house!`;
-    const coordinatorMsg = `✅ Open House Approved: ${agentName} is confirmed for ${listingAddress} on ${dateFormatted} (${timeRange}).`;
+    const agentMsg = `🏠 eXp Syndicate: Your Open House booking for ${listingAddress} on ${dateFormatted} (${timeRange}) has been APPROVED! The appointment is synced to Follow Up Boss. Good luck with the open house!`;
+    const coordinatorMsg = `✅ Open House Approved: ${agentName} is confirmed for ${listingAddress} on ${dateFormatted} (${timeRange}). FUB Event: #${fubEventId}`;
 
     if (linqApiKey) {
       const sendLinq = async (toPhone, text) => {

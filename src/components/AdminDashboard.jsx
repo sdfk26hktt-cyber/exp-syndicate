@@ -441,7 +441,7 @@ const AdminDashboard = () => {
     setApprovingBookingId(bookingId);
     try {
       await approveBooking(bookingId, userName);
-      setActionSuccessMsg("✅ Open House approved! Confirmation texted via LinqApp.");
+      setActionSuccessMsg("✅ Open House approved! Appointment synced to owner in Follow Up Boss & confirmation texted via LinqApp.");
       setTimeout(() => setActionSuccessMsg(''), 5000);
     } catch (e) {
       alert("Error approving booking: " + e.message);
