@@ -173,7 +173,7 @@ export const OpenHouseProvider = ({ children }) => {
       if (b.id === excludeBookingId) return false;
       if (b.listing_id !== listingId) return false;
       if (b.date !== date) return false;
-      if (b.status === 'rejected') return false; // Rejected bookings don't occupy slots
+      if (b.status === 'rejected' || b.status === 'cancelled') return false; // Rejected/cancelled bookings don't occupy slots
 
       const existingStart = timeToMinutes(b.start_time);
       const existingEnd = timeToMinutes(b.end_time);
@@ -502,6 +502,45 @@ export const OpenHouseProvider = ({ children }) => {
     }
   };
 
+  // Cancel a booking (can be called by coordinator, admin, or agent for schedule adjustments)
+  const cancelBooking = async (bookingId, reason = 'Schedule adjustment', cancelledBy = 'Coordinator / Agent') => {
+    const booking = bookings.find(b => b.id === bookingId);
+    const listing = booking ? listings.find(l => l.id === booking.listing_id || l.sisu_listing_id === booking.listing_id) : null;
+
+    try {
+      await fetch('/api/open-house/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId,
+          booking,
+          listing,
+          reason,
+          cancelledBy
+        })
+      });
+    } catch (apiErr) {
+      console.warn('Error invoking /api/open-house/cancel:', apiErr);
+    }
+
+    const cancelledAt = new Date().toISOString();
+    const updatedBookings = bookings.map(b => {
+      if (b.id === bookingId) {
+        return {
+          ...b,
+          status: 'cancelled',
+          cancellation_reason: reason,
+          cancelled_at: cancelledAt,
+          cancelled_by: cancelledBy
+        };
+      }
+      return b;
+    });
+
+    persistBookings(updatedBookings);
+    return { success: true };
+  };
+
   // Update coordinator settings
   const updateWeeklyReportConfig = async (newConfig) => {
     const updated = { ...weeklyReportConfig, ...newConfig, updated_at: new Date().toISOString() };
@@ -702,6 +741,7 @@ export const OpenHouseProvider = ({ children }) => {
         createBooking,
         approveBooking,
         rejectBooking,
+        cancelBooking,
         syncSisuListings,
         updateWeeklyReportConfig,
         sendWeeklyReportPrompt,

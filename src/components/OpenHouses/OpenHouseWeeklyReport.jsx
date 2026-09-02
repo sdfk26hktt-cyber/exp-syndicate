@@ -354,11 +354,11 @@ const OpenHouseWeeklyReport = ({ onClose }) => {
                                 backgroundColor: b.status === 'approved' ? 'rgba(16, 185, 129, 0.15)' : b.status === 'pending' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                                 color: b.status === 'approved' ? '#065f46' : b.status === 'pending' ? '#92400e' : '#991b1b'
                               }}>
-                                {b.status}
+                                {b.status === 'cancelled' ? 'Cancelled' : b.status}
                               </span>
-                              {b.fub_event_id && (
+                              {b.status === 'approved' && b.fub_event_id && (
                                 <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '3px' }}>
-                                  FUB #{b.fub_event_id}
+                                  FUB #{String(b.fub_event_id).replace(/\D/g, '')}
                                 </div>
                               )}
                             </td>

@@ -401,6 +401,7 @@ const AdminDashboard = () => {
   const [eventFilterMonth, setEventFilterMonth] = useState(new Date().getMonth().toString());
   const [eventFilterYear, setEventFilterYear] = useState(new Date().getFullYear().toString());
   
+  const [agentSearchQuery, setAgentSearchQuery] = useState('');
   const [expandedAgentGroups, setExpandedAgentGroups] = useState({
     admin: true,
     onboarding: true,
@@ -421,6 +422,7 @@ const AdminDashboard = () => {
     pendingApprovals, 
     approveBooking, 
     rejectBooking, 
+    cancelBooking,
     syncSisuListings, 
     isSyncing, 
     lastSyncedAt, 
@@ -431,6 +433,7 @@ const AdminDashboard = () => {
   } = useOpenHouse();
   
   const [approvingBookingId, setApprovingBookingId] = useState(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [isSendingReportPrompt, setIsSendingReportPrompt] = useState(false);
   const [showOpenHouseReportModal, setShowOpenHouseReportModal] = useState(false);
   const [showListingEditModal, setShowListingEditModal] = useState(false);
@@ -456,6 +459,22 @@ const AdminDashboard = () => {
       await rejectBooking(bookingId, reason, userName);
       setActionSuccessMsg("Open House request declined.");
       setTimeout(() => setActionSuccessMsg(''), 4000);
+    }
+  };
+
+  const handleCancelOpenHouse = async (bookingId) => {
+    const reason = prompt("Enter reason for cancellation (e.g. Agent conflict, Seller requested, Under contract):", "Schedule adjustment");
+    if (reason !== null) {
+      setCancellingBookingId(bookingId);
+      try {
+        await cancelBooking(bookingId, reason || 'Schedule adjustment', userName);
+        setActionSuccessMsg("❌ Open House cancelled. Follow Up Boss appointment removed & agent notified.");
+        setTimeout(() => setActionSuccessMsg(''), 5000);
+      } catch (err) {
+        alert("Error cancelling open house: " + err.message);
+      } finally {
+        setCancellingBookingId(null);
+      }
     }
   };
 
@@ -941,10 +960,73 @@ const AdminDashboard = () => {
 
 
           <div className="card mt-6">
-            <div style={styles.tableHeader}>
-              <h2 className="text-lg m-0">Agent Directory & Roles</h2>
-              <p className="text-muted text-sm" style={{margin: 0}}>Graduate agents to specialized dashboards.</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div>
+                <h2 className="text-lg m-0" style={{ color: 'var(--color-dark-navy)', fontWeight: 700 }}>Agent Directory & Roles</h2>
+                <p className="text-muted text-sm" style={{ margin: '0.2rem 0 0 0' }}>Alphabetically sorted roster. Graduate agents to specialized dashboards.</p>
+              </div>
+
+              {/* Agent Search Bar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexGrow: 1, maxWidth: '440px', minWidth: '260px' }}>
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search agents by name, email, phone, role..."
+                    value={agentSearchQuery}
+                    onChange={(e) => setAgentSearchQuery(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem 2.2rem 0.55rem 2.3rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--color-border)',
+                      backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                      color: 'var(--color-dark-navy)',
+                      fontSize: '0.88rem',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  {agentSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setAgentSearchQuery('')}
+                      style={{
+                        position: 'absolute',
+                        right: '8px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--color-text-muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '2px'
+                      }}
+                      title="Clear search"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                </div>
+                {agentSearchQuery && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                    {agents.filter(a => {
+                      const q = agentSearchQuery.toLowerCase().trim();
+                      return (
+                        (a.name || '').toLowerCase().includes(q) ||
+                        (a.id || '').toLowerCase().includes(q) ||
+                        (a.profile?.phone || '').includes(q) ||
+                        (a.profile?.role || '').toLowerCase().includes(q) ||
+                        (a.status || '').toLowerCase().includes(q)
+                      );
+                    }).length} found
+                  </span>
+                )}
+              </div>
             </div>
+
             <div style={{overflowX: 'auto'}}>
               <table style={styles.roleTable}>
                 <thead>
@@ -960,14 +1042,30 @@ const AdminDashboard = () => {
 
                   {['admin', 'onboarding', 'flex_agent', 'team_agent'].map(groupKey => {
                     const groupTitle = groupKey === 'admin' ? 'Administrators' : groupKey === 'onboarding' ? 'Onboarding' : groupKey === 'flex_agent' ? 'Flex Agents' : 'Team Agents';
-                    const groupAgents = agents.filter(a => {
-                      const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : 'onboarding');
-                      if (groupKey === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
-                      if (groupKey === 'flex_agent') return s === 'flex_agent';
-                      if (groupKey === 'team_agent') return s === 'team_agent';
-                      return s !== 'flex_agent' && s !== 'team_agent' && s !== 'admin' && a.profile?.role !== 'Administrator';
-                    });
+                    const groupAgents = agents
+                      .filter(a => {
+                        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : 'onboarding');
+                        const matchesGroup = groupKey === 'admin' ? (s === 'admin' || a.profile?.role === 'Administrator')
+                          : groupKey === 'flex_agent' ? s === 'flex_agent'
+                          : groupKey === 'team_agent' ? s === 'team_agent'
+                          : (s !== 'flex_agent' && s !== 'team_agent' && s !== 'admin' && a.profile?.role !== 'Administrator');
+                        
+                        if (!matchesGroup) return false;
+
+                        if (!agentSearchQuery.trim()) return true;
+                        const q = agentSearchQuery.toLowerCase().trim();
+                        return (
+                          (a.name || '').toLowerCase().includes(q) ||
+                          (a.id || '').toLowerCase().includes(q) ||
+                          (a.profile?.phone || '').includes(q) ||
+                          (a.profile?.role || '').toLowerCase().includes(q) ||
+                          (a.status || '').toLowerCase().includes(q)
+                        );
+                      })
+                      .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
                     
+                    const isGroupExpanded = expandedAgentGroups[groupKey] || (agentSearchQuery.trim().length > 0 && groupAgents.length > 0);
+
                     return (
                       <React.Fragment key={groupKey}>
                         <tr 
@@ -975,15 +1073,17 @@ const AdminDashboard = () => {
                           style={{ cursor: 'pointer', backgroundColor: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)' }}
                         >
                           <td colSpan="5" style={{ padding: '0.75rem 1rem', fontWeight: 'bold', color: 'var(--color-dark-navy)' }}>
-                            {expandedAgentGroups[groupKey] ? '▼' : '▶'} {groupTitle} ({groupAgents.length})
+                            {isGroupExpanded ? '▼' : '▶'} {groupTitle} ({groupAgents.length})
                           </td>
                         </tr>
-                        {expandedAgentGroups[groupKey] && groupAgents.length === 0 && (
+                        {isGroupExpanded && groupAgents.length === 0 && (
                           <tr>
-                            <td colSpan="5" style={{...styles.roleTd, textAlign: 'center', color: 'var(--color-text-muted)'}}>No users in this group.</td>
+                            <td colSpan="5" style={{...styles.roleTd, textAlign: 'center', color: 'var(--color-text-muted)'}}>
+                              {agentSearchQuery.trim() ? `No agents in ${groupTitle} matching "${agentSearchQuery}"` : 'No users in this group.'}
+                            </td>
                           </tr>
                         )}
-                        {expandedAgentGroups[groupKey] && groupAgents.map(a => (
+                        {isGroupExpanded && groupAgents.map(a => (
                           <tr key={a.id} style={styles.roleTr}>
                             <td style={styles.roleTd}>
                               <div style={{display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap'}}>
@@ -1336,26 +1436,31 @@ const AdminDashboard = () => {
                         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#10b981', backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>Active</span>
                       </td>
                     </tr>
-                    {adminsList.map((admin, idx) => {
-                      const email = (admin.email || '').toLowerCase().trim();
-                      if (email === 'brian@brianburds.com' || email === 'brenda@brianburds.com') return null;
-                      return (
-                        <tr key={idx}>
-                          <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)' }}>{admin.name || email.split('@')[0]}</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{email}</div>
-                          </td>
-                          <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', textAlign: 'right' }}>
-                            <button 
-                              onClick={() => handleRemoveAdmin(admin.email)}
-                              style={{ color: 'var(--color-danger)', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
-                            >
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {[...adminsList]
+                      .filter(admin => {
+                        const email = (admin.email || '').toLowerCase().trim();
+                        return email !== 'brian@brianburds.com' && email !== 'brenda@brianburds.com';
+                      })
+                      .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }))
+                      .map((admin, idx) => {
+                        const email = (admin.email || '').toLowerCase().trim();
+                        return (
+                          <tr key={idx}>
+                            <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)' }}>
+                              <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)' }}>{admin.name || email.split('@')[0]}</div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{email}</div>
+                            </td>
+                            <td style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', textAlign: 'right' }}>
+                              <button 
+                                onClick={() => handleRemoveAdmin(admin.email)}
+                                style={{ color: 'var(--color-danger)', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -1747,6 +1852,137 @@ const AdminDashboard = () => {
                       })}
                   </div>
                 </div>
+              </div>
+
+              {/* Scheduled Open Houses & Cancellations */}
+              <div className="card mt-6">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+                  <div>
+                    <h2 className="text-lg m-0" style={{ color: 'var(--color-dark-navy)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Calendar size={20} style={{ color: 'var(--color-primary)' }} />
+                      Scheduled Open Houses & Master Roster ({bookings.filter(b => b.status === 'approved' || b.status === 'pending').length})
+                    </h2>
+                    <p className="text-muted text-sm" style={{ margin: '0.2rem 0 0 0' }}>
+                      Manage active host bookings, remove or cancel slots when agent/owner schedules adjust.
+                    </p>
+                  </div>
+                </div>
+
+                {bookings.filter(b => b.status === 'approved' || b.status === 'pending').length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '8px' }}>
+                    No active or pending open houses scheduled at this time.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    {bookings
+                      .filter(b => b.status === 'approved' || b.status === 'pending')
+                      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+                      .map(booking => {
+                        const listing = listings.find(l => l.id === booking.listing_id || l.sisu_listing_id === booking.listing_id);
+                        const displayAddress = listing?.address || booking.listing_address || 'Listing Address';
+                        const displayPrice = listing?.price_formatted || booking.listing_price || '';
+                        const isApproved = booking.status === 'approved';
+                        const fubEventId = booking.fub_event_id;
+
+                        return (
+                          <div
+                            key={booking.id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '1rem',
+                              borderRadius: '8px',
+                              backgroundColor: isApproved ? 'var(--color-background)' : 'rgba(245, 158, 11, 0.05)',
+                              border: `1px solid ${isApproved ? 'var(--color-border)' : 'rgba(245, 158, 11, 0.3)'}`,
+                              gap: '1rem',
+                              flexWrap: 'wrap'
+                            }}
+                          >
+                            <div style={{ flex: '1 1 auto', minWidth: '280px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  backgroundColor: isApproved ? '#10b981' : '#f59e0b',
+                                  color: 'white',
+                                  padding: '0.15rem 0.5rem',
+                                  borderRadius: '4px',
+                                  textTransform: 'uppercase'
+                                }}>
+                                  {isApproved ? '✓ Scheduled & Synced' : '⏳ Pending Approval'}
+                                </span>
+                                <span style={{ fontWeight: 700, color: 'var(--color-dark-navy)', fontSize: '0.95rem' }}>
+                                  {displayAddress}
+                                </span>
+                                {displayPrice && (
+                                  <span style={{ fontSize: '0.8rem', color: 'var(--color-slate-blue)', fontWeight: 600 }}>
+                                    {displayPrice}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                <span>📅 <strong>{booking.date}</strong> ({booking.start_time} - {booking.end_time})</span>
+                                <span>👤 Host: <strong>{booking.agent_name}</strong> {booking.agent_phone ? `(${booking.agent_phone})` : ''}</span>
+                                {fubEventId && (
+                                  <span style={{ color: '#059669', fontWeight: 600 }}>
+                                    🗓️ FUB Appt #{String(fubEventId).replace(/\D/g, '')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              {!isApproved && (
+                                <button
+                                  onClick={() => handleApproveOpenHouse(booking.id)}
+                                  disabled={approvingBookingId === booking.id}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    padding: '0.45rem 0.8rem',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    backgroundColor: 'var(--color-success)',
+                                    color: 'white',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <Check size={14} /> {approvingBookingId === booking.id ? 'Approving...' : 'Approve'}
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => handleCancelOpenHouse(booking.id)}
+                                disabled={cancellingBookingId === booking.id}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  padding: '0.45rem 0.8rem',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                                  color: 'var(--color-danger)',
+                                  fontSize: '0.82rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
+                                }}
+                                title="Cancel Open House and remove appointment from Follow Up Boss calendar"
+                              >
+                                <Trash2 size={14} /> {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel Open House'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
 
               {/* Listing Edit Modal */}

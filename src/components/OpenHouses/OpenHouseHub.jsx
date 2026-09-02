@@ -19,7 +19,8 @@ import {
   ChevronRight,
   ShieldCheck,
   CalendarCheck,
-  Building
+  Building,
+  Trash2
 } from 'lucide-react';
 import { useOpenHouse } from '../../context/OpenHouseContext';
 import { useAuth } from '../../context/AuthContext';
@@ -32,6 +33,7 @@ const OpenHouseHub = () => {
     myBookings, 
     checkOverlap, 
     createBooking, 
+    cancelBooking,
     syncSisuListings, 
     isSyncing,
     lastSyncedAt 
@@ -129,6 +131,19 @@ const OpenHouseHub = () => {
       setSubmitError(err.message || 'Failed to submit open house request');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelBooking = async (bookingId) => {
+    const reason = prompt("Reason for cancelling open house (e.g. Schedule adjustment, Personal conflict):", "Schedule adjustment");
+    if (reason !== null) {
+      const agentName = currentAgentData?.name || currentUser?.name || currentUser?.email || 'Hosting Agent';
+      try {
+        await cancelBooking(bookingId, reason || 'Schedule adjustment', agentName);
+        alert("Open house cancelled successfully. The time slot has been freed.");
+      } catch (err) {
+        alert("Error cancelling open house: " + err.message);
+      }
     }
   };
 
@@ -553,16 +568,20 @@ const OpenHouseHub = () => {
                 const listing = listings.find(l => l.id === b.listing_id || l.sisu_listing_id === b.listing_id);
                 const displayAddress = listing?.address || b.listing_address || 'Listing Address';
                 const displayPrice = listing?.price_formatted || b.listing_price || 'N/A';
+                const isCancelled = b.status === 'cancelled';
+                const isRejected = b.status === 'rejected';
+                const isApproved = b.status === 'approved';
 
                 return (
                   <div 
                     key={b.id} 
                     className="card"
                     style={{
-                      borderLeft: `5px solid ${b.status === 'approved' ? 'var(--color-success)' : b.status === 'rejected' ? 'var(--color-error)' : '#f59e0b'}`,
+                      borderLeft: `5px solid ${isApproved ? 'var(--color-success)' : isRejected || isCancelled ? 'var(--color-error)' : '#f59e0b'}`,
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '0.75rem'
+                      gap: '0.75rem',
+                      opacity: isCancelled ? 0.75 : 1
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
@@ -574,19 +593,19 @@ const OpenHouseHub = () => {
                             fontSize: '0.75rem',
                             fontWeight: 700,
                             textTransform: 'uppercase',
-                            backgroundColor: b.status === 'approved' ? 'rgba(16, 185, 129, 0.15)' : b.status === 'rejected' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                            color: b.status === 'approved' ? '#065f46' : b.status === 'rejected' ? '#991b1b' : '#92400e',
+                            backgroundColor: isApproved ? 'rgba(16, 185, 129, 0.15)' : isRejected || isCancelled ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                            color: isApproved ? '#065f46' : isRejected || isCancelled ? '#991b1b' : '#92400e',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '0.3rem'
                           }}>
-                            {b.status === 'approved' && <CheckCircle size={12} />}
+                            {isApproved && <CheckCircle size={12} />}
                             {b.status === 'pending' && <Clock size={12} />}
-                            {b.status === 'rejected' && <AlertTriangle size={12} />}
-                            {b.status === 'approved' ? 'Approved & Synced' : b.status === 'pending' ? 'Pending Approval' : 'Declined'}
+                            {(isRejected || isCancelled) && <AlertTriangle size={12} />}
+                            {isApproved ? 'Approved & Synced' : b.status === 'pending' ? 'Pending Approval' : isCancelled ? 'Cancelled' : 'Declined'}
                           </span>
 
-                          {b.fub_event_id && (
+                          {b.fub_event_id && isApproved && (
                             <span style={{
                               padding: '0.25rem 0.5rem',
                               borderRadius: '4px',
@@ -595,7 +614,7 @@ const OpenHouseHub = () => {
                               color: 'var(--color-primary)',
                               fontWeight: 600
                             }}>
-                              FUB Event: #{b.fub_event_id}
+                              FUB Event: #{String(b.fub_event_id).replace(/\D/g, '')}
                             </span>
                           )}
                         </div>
@@ -614,6 +633,7 @@ const OpenHouseHub = () => {
                       <div style={{ textAlign: 'right', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                         <div>Requested {new Date(b.requested_at).toLocaleDateString()}</div>
                         {b.reviewed_at && <div>Reviewed {new Date(b.reviewed_at).toLocaleDateString()}</div>}
+                        {b.cancelled_at && <div style={{ color: 'var(--color-danger)' }}>Cancelled {new Date(b.cancelled_at).toLocaleDateString()}</div>}
                       </div>
                     </div>
 
@@ -629,7 +649,7 @@ const OpenHouseHub = () => {
                       </div>
                     )}
 
-                    {b.status === 'rejected' && b.rejection_reason && (
+                    {isRejected && b.rejection_reason && (
                       <div style={{
                         backgroundColor: 'rgba(239, 68, 68, 0.08)',
                         border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -642,7 +662,20 @@ const OpenHouseHub = () => {
                       </div>
                     )}
 
-                    {b.status === 'approved' && (
+                    {isCancelled && (
+                      <div style={{
+                        backgroundColor: 'rgba(100, 116, 139, 0.08)',
+                        border: '1px solid rgba(100, 116, 139, 0.2)',
+                        padding: '0.6rem 0.85rem',
+                        borderRadius: '6px',
+                        fontSize: '0.85rem',
+                        color: 'var(--color-text-muted)'
+                      }}>
+                        <strong>Cancellation Reason:</strong> {b.cancellation_reason || 'Schedule adjustment'} {b.cancelled_by ? `(by ${b.cancelled_by})` : ''}
+                      </div>
+                    )}
+
+                    {isApproved && (
                       <div style={{
                         backgroundColor: 'rgba(16, 185, 129, 0.08)',
                         border: '1px solid rgba(16, 185, 129, 0.2)',
@@ -657,6 +690,31 @@ const OpenHouseHub = () => {
                         gap: '0.5rem'
                       }}>
                         <span>✅ Follow Up Boss calendar appointment created with seller attached. Confirmation text sent via LinqApp.</span>
+                      </div>
+                    )}
+
+                    {/* Cancel button if pending or approved */}
+                    {(b.status === 'pending' || isApproved) && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                        <button
+                          onClick={() => handleCancelBooking(b.id)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.4rem 0.75rem',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            backgroundColor: 'rgba(239, 68, 68, 0.06)',
+                            color: 'var(--color-danger)',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                          title="Cancel open house and free up slot"
+                        >
+                          <Trash2 size={13} /> Cancel Open House
+                        </button>
                       </div>
                     )}
                   </div>
