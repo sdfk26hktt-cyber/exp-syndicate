@@ -269,6 +269,128 @@ export const AuthProvider = ({ children }) => {
     return data.user;
   };
 
+  const updateUserEmail = async (newEmail) => {
+    const safeNewEmail = (newEmail || '').toLowerCase().trim();
+    if (!safeNewEmail) {
+      throw new Error("Email address is required.");
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(safeNewEmail)) {
+      throw new Error("Please enter a valid email address.");
+    }
+
+    const oldEmail = (currentUser?.email || currentUser?.id || '').toLowerCase().trim();
+    if (safeNewEmail === oldEmail) {
+      throw new Error("The new email address is the same as your current email address.");
+    }
+
+    // 1. Verify that new email isn't already taken by another agent
+    try {
+      const { data: existingAgent } = await supabase
+        .from('agents')
+        .select('id')
+        .ilike('id', safeNewEmail)
+        .maybeSingle();
+
+      if (existingAgent && existingAgent.id.toLowerCase().trim() !== oldEmail) {
+        throw new Error(`An account with email "${safeNewEmail}" is already registered.`);
+      }
+    } catch (checkErr) {
+      if (checkErr.message && checkErr.message.includes('already registered')) throw checkErr;
+    }
+
+    // 2. Update Supabase Auth user email
+    const { data: authData, error: authError } = await supabase.auth.updateUser({
+      email: safeNewEmail
+    });
+
+    if (authError) {
+      throw authError;
+    }
+
+    // 3. Migrate the database records in agents table
+    try {
+      const { data: oldAgentData } = await supabase
+        .from('agents')
+        .select('*')
+        .ilike('id', oldEmail)
+        .maybeSingle();
+
+      if (oldAgentData) {
+        const newAgentRecord = {
+          ...oldAgentData,
+          id: safeNewEmail,
+          profile: {
+            ...(oldAgentData.profile || {}),
+            email: safeNewEmail
+          }
+        };
+
+        await supabase.from('agents').upsert([newAgentRecord]);
+        if (oldEmail !== safeNewEmail) {
+          await supabase.from('agents').delete().ilike('id', oldEmail);
+        }
+      }
+    } catch (dbErr) {
+      console.warn('Could not migrate agents row during self-service email update:', dbErr);
+    }
+
+    // 4. Migrate admins table if admin
+    try {
+      const { data: adminRecord } = await supabase
+        .from('admins')
+        .select('*')
+        .ilike('email', oldEmail)
+        .maybeSingle();
+
+      if (adminRecord) {
+        await supabase.from('admins').upsert([{ email: safeNewEmail }]);
+        if (oldEmail !== safeNewEmail) {
+          await supabase.from('admins').delete().ilike('email', oldEmail);
+        }
+      }
+    } catch (admErr) {
+      console.warn('Could not migrate admins table during self-service email update:', admErr);
+    }
+
+    // 5. Migrate open_house_bookings and posts
+    try {
+      await supabase
+        .from('open_house_bookings')
+        .update({ agent_email: safeNewEmail, claimed_by: safeNewEmail })
+        .ilike('agent_email', oldEmail);
+    } catch (ohErr) {
+      console.warn('Could not update open_house_bookings:', ohErr);
+    }
+
+    try {
+      await supabase
+        .from('posts')
+        .update({ author_id: safeNewEmail })
+        .ilike('author_id', oldEmail);
+    } catch (postErr) {
+      console.warn('Could not update posts:', postErr);
+    }
+
+    // 6. Update local currentUser state
+    const updatedUser = {
+      ...currentUser,
+      id: safeNewEmail,
+      email: safeNewEmail
+    };
+    setCurrentUser(updatedUser);
+    if (localStorage.getItem('mockSession')) {
+      localStorage.setItem('mockSession', JSON.stringify(updatedUser));
+    }
+
+    return {
+      success: true,
+      email: safeNewEmail,
+      user: authData?.user,
+      message: `Your login email has been updated to ${safeNewEmail}`
+    };
+  };
+
   const updatePassword = async (newPassword) => {
     if (!newPassword || newPassword.length < 6) {
       throw new Error("Password must be at least 6 characters long.");
@@ -450,6 +572,7 @@ export const AuthProvider = ({ children }) => {
       login, 
       loginWithPassword,
       signUpGuest,
+      updateUserEmail,
       updatePassword,
       resetPasswordForEmail,
       verifyOtpAndSetPassword,

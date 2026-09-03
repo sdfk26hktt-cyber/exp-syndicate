@@ -15,11 +15,13 @@ import {
   Award, 
   Heart, 
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Mail,
+  Edit3
 } from 'lucide-react';
 
 const Settings = () => {
-  const { currentUser, updatePassword } = useAuth();
+  const { currentUser, updatePassword, updateUserEmail } = useAuth();
   const { adminSettings, updateAdminSettings, currentAgentData, updateAgentProfile } = useAgent();
   
   // Local state for Agent Profile & Contact Info
@@ -30,6 +32,13 @@ const Settings = () => {
   const [profileAddress, setProfileAddress] = useState('');
   const [profilePreferredContact, setProfilePreferredContact] = useState('phone'); // 'phone' | 'text' | 'email'
   
+  // Email update state
+  const [newEmail, setNewEmail] = useState('');
+  const [showEmailChangeBox, setShowEmailChangeBox] = useState(false);
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [emailMessage, setEmailMessage] = useState('');
+  const [emailError, setEmailError] = useState(false);
+
   // Emergency Contact Info
   const [profileEmergencyName, setProfileEmergencyName] = useState('');
   const [profileEmergencyPhone, setProfileEmergencyPhone] = useState('');
@@ -182,6 +191,41 @@ const Settings = () => {
     }
   };
 
+  const handleUpdateEmail = async (e) => {
+    e.preventDefault();
+    const cleanNewEmail = (newEmail || '').toLowerCase().trim();
+    if (!cleanNewEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanNewEmail)) {
+      setEmailError(true);
+      setEmailMessage('Please enter a valid email address.');
+      return;
+    }
+    if (cleanNewEmail === (profileEmail || '').toLowerCase().trim()) {
+      setEmailError(true);
+      setEmailMessage('New email address must be different from your current email.');
+      return;
+    }
+
+    setIsUpdatingEmail(true);
+    setEmailMessage('');
+    setEmailError(false);
+
+    try {
+      const res = await updateUserEmail(cleanNewEmail);
+      setEmailError(false);
+      setEmailMessage(res?.message || `Email address updated successfully to ${cleanNewEmail}!`);
+      setProfileEmail(cleanNewEmail);
+      setNewEmail('');
+      setShowEmailChangeBox(false);
+      setTimeout(() => setEmailMessage(''), 6000);
+    } catch (err) {
+      console.error(err);
+      setEmailError(true);
+      setEmailMessage(err.message || 'Failed to update email address.');
+    } finally {
+      setIsUpdatingEmail(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '80px', maxWidth: '1200px', margin: '0 auto' }}>
       <div className="mb-6 flex justify-between items-center">
@@ -232,17 +276,78 @@ const Settings = () => {
                   />
                 </div>
                 <div style={styles.inputGroup}>
-                  <label style={styles.label}>
-                    Primary Email <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--color-text-muted)' }}>(Login identifier)</span>
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={styles.label}>
+                      Primary Email <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--color-text-muted)' }}>(Login identifier)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailChangeBox(!showEmailChangeBox)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--color-primary)',
+                        fontSize: '0.78rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        padding: 0
+                      }}
+                    >
+                      <Edit3 size={13} /> {showEmailChangeBox ? 'Cancel' : 'Change Email'}
+                    </button>
+                  </div>
                   <input 
                     type="email" 
-                    style={{ ...styles.input, backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }} 
+                    style={{ ...styles.input, backgroundColor: '#f8fafc', color: '#64748b' }} 
                     value={profileEmail} 
                     disabled 
                   />
                 </div>
               </div>
+
+              {/* Expandable Email Change Box in Identity Section */}
+              {showEmailChangeBox && (
+                <div style={{
+                  marginTop: '0.85rem',
+                  padding: '1rem',
+                  backgroundColor: 'rgba(0, 161, 224, 0.04)',
+                  borderRadius: 'var(--border-radius-sm)',
+                  border: '1px solid rgba(0, 161, 224, 0.2)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', color: 'var(--color-primary)', fontWeight: '600', fontSize: '0.85rem' }}>
+                    <Mail size={15} /> Update Your Login Email Address
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input 
+                      type="email" 
+                      placeholder="Enter new email address..."
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      style={{ ...styles.input, flex: '1 1 200px', backgroundColor: 'var(--color-white)' }}
+                    />
+                    <button 
+                      type="button" 
+                      onClick={handleUpdateEmail}
+                      disabled={isUpdatingEmail || !newEmail}
+                      className="btn-primary"
+                      style={{ padding: '0.65rem 1rem', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                    >
+                      {isUpdatingEmail ? 'Updating...' : 'Save New Email'}
+                    </button>
+                  </div>
+                  {emailMessage && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: emailError ? '#EF4444' : 'var(--color-success)', fontWeight: '600' }}>
+                      {emailMessage}
+                    </div>
+                  )}
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', margin: '0.4rem 0 0 0' }}>
+                    Updating your email will migrate all your onboarding progress, XP points, and directory profile to the new address.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Section: Direct Contact Details */}
@@ -454,8 +559,58 @@ const Settings = () => {
           </form>
         </div>
 
-        {/* Security & Password Card (For all users) */}
+        {/* Login Email Address Card (For all users) */}
         <div className="card" style={{ alignSelf: 'start', borderTop: '4px solid var(--color-primary)' }}>
+          <div className="flex items-center gap-2 mb-4 border-b pb-4" style={{ borderColor: 'var(--color-border)' }}>
+            <Mail size={20} color="var(--color-primary)" />
+            <h2 className="text-lg m-0 font-semibold text-dark-navy">Login Email Address</h2>
+          </div>
+
+          <p className="text-sm text-muted mb-3">
+            Your login email identifier for The eXp Syndicate Portal. Changing this updates your login credentials and transfers your records.
+          </p>
+
+          <div style={{
+            padding: '0.75rem 1rem',
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 'var(--border-radius-sm)',
+            marginBottom: '1rem'
+          }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem' }}>Current Active Login Email</div>
+            <div style={{ fontSize: '0.95rem', fontWeight: '600', color: 'var(--color-dark-navy)', wordBreak: 'break-all' }}>
+              {profileEmail || currentUser?.email || 'No email configured'}
+            </div>
+          </div>
+
+          {emailMessage && (
+            <div style={emailError ? styles.errorToast : styles.successToast}>
+              {emailMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleUpdateEmail} style={styles.form}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>New Email Address</label>
+              <input 
+                type="email" 
+                style={styles.input} 
+                placeholder="e.g. yourname@example.com"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <button type="submit" className="btn-primary" style={{ marginTop: '0.5rem', width: '100%' }} disabled={isUpdatingEmail || !newEmail}>
+              <Mail size={16} />
+              {isUpdatingEmail ? 'Updating Email Address...' : 'Update Login Email'}
+            </button>
+          </form>
+        </div>
+
+        {/* Security & Password Card (For all users) */}
+        <div className="card" style={{ alignSelf: 'start', borderTop: '4px solid var(--color-slate-blue)' }}>
           <div className="flex items-center gap-2 mb-4 border-b pb-4" style={{ borderColor: 'var(--color-border)' }}>
             <Lock size={20} color="var(--color-primary)" />
             <h2 className="text-lg m-0 font-semibold text-dark-navy">Security & Password</h2>

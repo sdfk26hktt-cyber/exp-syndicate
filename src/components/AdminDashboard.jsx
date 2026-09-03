@@ -27,6 +27,7 @@ const AdminDashboard = () => {
     adminSettings, 
     updateAgentStatus, 
     adminUpdateAgent, 
+    adminChangeAgentEmail, 
     deleteAgent, 
     currentAgentData,
     awardAgentXp,
@@ -267,28 +268,61 @@ const AdminDashboard = () => {
   // Edit Agent State
   const [editingAgent, setEditingAgent] = useState(null);
   const [editAgentName, setEditAgentName] = useState('');
+  const [editAgentEmail, setEditAgentEmail] = useState('');
   const [editAgentPhone, setEditAgentPhone] = useState('');
   const [editAgentAltPhone, setEditAgentAltPhone] = useState('');
   const [editAgentAddress, setEditAgentAddress] = useState('');
   const [editAgentLicense, setEditAgentLicense] = useState('');
   const [editAgentEmergencyName, setEditAgentEmergencyName] = useState('');
   const [editAgentEmergencyPhone, setEditAgentEmergencyPhone] = useState('');
+  const [isSavingAgentEdit, setIsSavingAgentEdit] = useState(false);
+  const [editAgentError, setEditAgentError] = useState('');
   
   const handleEditAgentSubmit = async (e) => {
     e.preventDefault();
     if (!editingAgent) return;
     
-    await adminUpdateAgent(editingAgent.id, editAgentName, {
-      phone: editAgentPhone,
-      altPhone: editAgentAltPhone,
-      address: editAgentAddress,
-      licenseNumber: editAgentLicense,
-      emergencyName: editAgentEmergencyName,
-      emergencyPhone: editAgentEmergencyPhone
-    });
-    setEditingAgent(null);
-    setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
-    setTimeout(() => setActionSuccessMsg(''), 4000);
+    const cleanNewEmail = (editAgentEmail || editingAgent.id || '').toLowerCase().trim();
+    const cleanOldEmail = (editingAgent.id || editingAgent.profile?.email || '').toLowerCase().trim();
+    
+    if (!cleanNewEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanNewEmail)) {
+      setEditAgentError('Please enter a valid email address.');
+      return;
+    }
+
+    setIsSavingAgentEdit(true);
+    setEditAgentError('');
+
+    try {
+      if (cleanNewEmail !== cleanOldEmail) {
+        await adminChangeAgentEmail(cleanOldEmail, cleanNewEmail, {
+          phone: editAgentPhone,
+          altPhone: editAgentAltPhone,
+          address: editAgentAddress,
+          licenseNumber: editAgentLicense,
+          emergencyName: editAgentEmergencyName,
+          emergencyPhone: editAgentEmergencyPhone
+        }, editAgentName);
+        setActionSuccessMsg(`Successfully updated profile and changed login email to ${cleanNewEmail}`);
+      } else {
+        await adminUpdateAgent(editingAgent.id, editAgentName, {
+          phone: editAgentPhone,
+          altPhone: editAgentAltPhone,
+          address: editAgentAddress,
+          licenseNumber: editAgentLicense,
+          emergencyName: editAgentEmergencyName,
+          emergencyPhone: editAgentEmergencyPhone
+        });
+        setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
+      }
+      setEditingAgent(null);
+      setTimeout(() => setActionSuccessMsg(''), 4000);
+    } catch (err) {
+      console.error(err);
+      setEditAgentError(err.message || 'Failed to update agent.');
+    } finally {
+      setIsSavingAgentEdit(false);
+    }
   };
 
   // Award XP State
@@ -1288,6 +1322,8 @@ const AdminDashboard = () => {
                                     e.stopPropagation();
                                     setEditingAgent(a);
                                     setEditAgentName(a.name || '');
+                                    setEditAgentEmail(a.id || a.profile?.email || '');
+                                    setEditAgentError('');
                                     setEditAgentPhone(a.profile?.phone || '');
                                     setEditAgentAltPhone(a.profile?.altPhone || '');
                                     setEditAgentAddress(a.profile?.address || '');
@@ -1370,8 +1406,14 @@ const AdminDashboard = () => {
                     <X size={20} color="var(--color-text-muted)" />
                   </button>
                   <h2 style={{ marginTop: 0, marginBottom: '0.25rem', color: 'var(--color-dark-navy)' }}>Edit Agent Information</h2>
-                  <p className="text-xs text-muted mb-4">Update contact information and profile for {editingAgent.name || editingAgent.id}</p>
+                  <p className="text-xs text-muted mb-4">Update contact information and portal login for {editingAgent.name || editingAgent.id}</p>
                   
+                  {editAgentError && (
+                    <div style={{ padding: '0.65rem 0.85rem', backgroundColor: '#FEE2E2', border: '1px solid #F87171', borderRadius: 'var(--border-radius-sm)', color: '#991B1B', fontSize: '0.82rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <AlertCircle size={15} /> {editAgentError}
+                    </div>
+                  )}
+
                   <form onSubmit={handleEditAgentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                     <div style={styles.formGrid}>
                       <div>
@@ -1385,13 +1427,21 @@ const AdminDashboard = () => {
                         />
                       </div>
                       <div>
-                        <label style={styles.label}>Email Address (Read-only)</label>
+                        <label style={styles.label}>
+                          Login Email Address <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', fontWeight: '600' }}>(Portal ID)</span>
+                        </label>
                         <input 
-                          type="text" 
-                          value={editingAgent.id} 
-                          style={{ ...styles.input, backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }} 
-                          disabled 
+                          type="email" 
+                          value={editAgentEmail} 
+                          onChange={(e) => setEditAgentEmail(e.target.value)} 
+                          style={styles.input} 
+                          required 
                         />
+                        {editAgentEmail.toLowerCase().trim() !== (editingAgent.id || '').toLowerCase().trim() && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            <AlertCircle size={12} /> Changing email will transfer all XP, playbooks & records to the new address.
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1465,8 +1515,10 @@ const AdminDashboard = () => {
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.75rem' }}>
-                      <button type="button" className="btn-secondary" onClick={() => setEditingAgent(null)}>Cancel</button>
-                      <button type="submit" className="btn-primary">Save Changes</button>
+                      <button type="button" className="btn-secondary" onClick={() => setEditingAgent(null)} disabled={isSavingAgentEdit}>Cancel</button>
+                      <button type="submit" className="btn-primary" disabled={isSavingAgentEdit}>
+                        {isSavingAgentEdit ? 'Saving Changes...' : 'Save Changes'}
+                      </button>
                     </div>
                   </form>
                 </div>

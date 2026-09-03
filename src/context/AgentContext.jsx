@@ -701,6 +701,112 @@ export const AgentProvider = ({ children }) => {
     loadAgents();
   };
 
+  const adminChangeAgentEmail = async (oldEmail, newEmail, profileData = {}, newName = '') => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error("Unauthorized: Only administrators can update agent emails.");
+    }
+    const safeOldEmail = (oldEmail || '').toLowerCase().trim();
+    const safeNewEmail = (newEmail || '').toLowerCase().trim();
+
+    if (!safeNewEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeNewEmail)) {
+      throw new Error("Please enter a valid email address.");
+    }
+
+    if (safeOldEmail === safeNewEmail) {
+      // Just update profile and name if email unchanged
+      return adminUpdateAgent(safeOldEmail, newName, profileData);
+    }
+
+    // 1. Try serverless endpoint first
+    try {
+      const response = await fetch('/api/admin/update-agent-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldEmail: safeOldEmail,
+          newEmail: safeNewEmail,
+          requestedBy: currentUser.email || currentUser.id
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        // If we also have profileData or newName, update them on the new record
+        if (Object.keys(profileData).length > 0 || newName) {
+          const targetAgent = agents.find(a => a.id?.toLowerCase() === safeOldEmail) || {};
+          const updatedProfile = { ...(targetAgent.profile || {}), ...profileData, email: safeNewEmail };
+          const updatedName = newName || targetAgent.name || safeNewEmail.split('@')[0];
+          await supabase.from('agents').update({ name: updatedName, profile: updatedProfile }).ilike('id', safeNewEmail);
+        }
+        await loadAgents();
+        return result;
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        if (response.status === 409 || errJson.error?.includes('already exists')) {
+          throw new Error(errJson.error || `Email "${safeNewEmail}" is already in use.`);
+        }
+      }
+    } catch (apiErr) {
+      if (apiErr.message && (apiErr.message.includes('already') || apiErr.message.includes('Unauthorized') || apiErr.message.includes('valid email'))) {
+        throw apiErr;
+      }
+      console.warn('API endpoint unavailable, falling back to direct database migration:', apiErr);
+    }
+
+    // 2. Direct client-side database migration fallback
+    const { data: existingAgent } = await supabase.from('agents').select('id').ilike('id', safeNewEmail).maybeSingle();
+    if (existingAgent && existingAgent.id.toLowerCase().trim() !== safeOldEmail) {
+      throw new Error(`An account with email "${safeNewEmail}" already exists in the syndicate.`);
+    }
+
+    const targetAgent = agents.find(a => a.id?.toLowerCase() === safeOldEmail);
+    const { data: oldAgentData } = await supabase.from('agents').select('*').ilike('id', safeOldEmail).maybeSingle();
+    const sourceData = oldAgentData || targetAgent;
+
+    if (sourceData) {
+      const updatedProfile = { ...(sourceData.profile || {}), ...profileData, email: safeNewEmail };
+      const updatedName = newName || sourceData.name || safeNewEmail.split('@')[0];
+      const newAgentRecord = {
+        ...sourceData,
+        id: safeNewEmail,
+        name: updatedName,
+        profile: updatedProfile
+      };
+
+      await supabase.from('agents').upsert([newAgentRecord]);
+      if (safeOldEmail !== safeNewEmail) {
+        await supabase.from('agents').delete().ilike('id', safeOldEmail);
+      }
+    }
+
+    try {
+      const { data: adminRecord } = await supabase.from('admins').select('*').ilike('email', safeOldEmail).maybeSingle();
+      if (adminRecord) {
+        await supabase.from('admins').upsert([{ email: safeNewEmail }]);
+        if (safeOldEmail !== safeNewEmail) {
+          await supabase.from('admins').delete().ilike('email', safeOldEmail);
+        }
+      }
+    } catch (admErr) {
+      console.warn('Admin table migration fallback error:', admErr);
+    }
+
+    try {
+      await supabase.from('open_house_bookings').update({ agent_email: safeNewEmail, claimed_by: safeNewEmail }).ilike('agent_email', safeOldEmail);
+    } catch (ohErr) {
+      console.warn('Open houses migration error:', ohErr);
+    }
+
+    try {
+      await supabase.from('posts').update({ author_id: safeNewEmail }).ilike('author_id', safeOldEmail);
+    } catch (postErr) {
+      console.warn('Posts migration error:', postErr);
+    }
+
+    await loadAgents();
+    return { success: true, oldEmail: safeOldEmail, newEmail: safeNewEmail };
+  };
+
   const updateAgentStatus = async (agentId, newStatus) => {
     await supabase.from('agents').update({ status: newStatus }).ilike('id', agentId);
     if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
@@ -838,6 +944,7 @@ export const AgentProvider = ({ children }) => {
       updateAdminSettings, 
       updateAgentProfile, 
       adminUpdateAgent, 
+      adminChangeAgentEmail, 
       updateAgentStatus, 
       updateAgentPhase, 
       deleteAgent, 
