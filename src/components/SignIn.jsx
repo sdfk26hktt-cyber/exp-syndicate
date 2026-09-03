@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Eye, EyeOff, Lock, ArrowLeft } from 'lucide-react';
+import { Mail, Eye, EyeOff, Lock, ArrowLeft, UserPlus, GraduationCap, Smartphone, User } from 'lucide-react';
 
 const SignIn = () => {
-  // mode: 'password' | 'code' | 'set_password' | 'recovery'
+  // mode: 'password' | 'code' | 'set_password' | 'recovery' | 'guest_signup'
   const [authMode, setAuthMode] = useState('password');
   const [codeStep, setCodeStep] = useState(1); // 1 = request code, 2 = verify code
   const [resetStep, setResetStep] = useState(1); // 1 = request reset code, 2 = verify code + enter new password
@@ -16,6 +16,14 @@ const SignIn = () => {
   const [code, setCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+
+  // Guest Registration Form State
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestPassword, setGuestPassword] = useState('');
+  const [guestConfirmPassword, setGuestConfirmPassword] = useState('');
+  const [showGuestPassword, setShowGuestPassword] = useState(false);
   
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -25,6 +33,7 @@ const SignIn = () => {
     requestOtp, 
     login, 
     loginWithPassword, 
+    signUpGuest,
     updatePassword, 
     verifyOtpAndSetPassword, 
     isPasswordRecovery, 
@@ -34,10 +43,12 @@ const SignIn = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Check URL params or hash for recovery mode
+  // Check URL params or hash for recovery or guest mode
   useEffect(() => {
     if (isPasswordRecovery || location.hash.includes('type=recovery') || location.search.includes('mode=recovery')) {
       setAuthMode('recovery');
+    } else if (location.search.includes('mode=guest') || location.search.includes('mode=signup')) {
+      setAuthMode('guest_signup');
     }
   }, [isPasswordRecovery, location]);
 
@@ -46,6 +57,8 @@ const SignIn = () => {
     if (currentUser && authMode !== 'recovery') {
       if (currentUser.role === 'admin') {
         navigate('/admin', { replace: true });
+      } else if (currentUser.role === 'guest') {
+        navigate('/classroom', { replace: true });
       } else {
         navigate('/', { replace: true });
       }
@@ -185,6 +198,44 @@ const SignIn = () => {
     } catch (err) {
       console.error(err);
       setError(`Failed to update password: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 7. Guest Self-Registration
+  const handleGuestSignUp = async (e) => {
+    e.preventDefault();
+    if (!guestName.trim()) {
+      setError('Please enter your full name.');
+      return;
+    }
+    if (!guestEmail.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (guestPassword !== guestConfirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    if (guestPassword.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setError('');
+    setSuccessMessage('');
+    setIsLoading(true);
+
+    try {
+      await signUpGuest(guestEmail, guestPassword, guestName, guestPhone);
+      setSuccessMessage('🎉 Welcome to The Syndicate! Your guest account has been created. Loading Classroom...');
+      setTimeout(() => {
+        navigate('/classroom', { replace: true });
+      }, 1200);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Failed to create guest account. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -401,32 +452,188 @@ const SignIn = () => {
           </div>
         )}
 
+        {/* ----------------- GUEST SIGN UP MODE ----------------- */}
+        {authMode === 'guest_signup' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button 
+                type="button" 
+                onClick={() => switchMode('password')}
+                style={styles.backBtn}
+              >
+                <ArrowLeft size={16} /> Back to Sign In
+              </button>
+            </div>
+
+            <div style={{
+              backgroundColor: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              borderRadius: '8px',
+              padding: '0.85rem 1rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <GraduationCap size={24} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+              <div style={{ fontSize: '0.84rem', color: 'var(--color-dark-navy)', lineHeight: 1.4 }}>
+                <strong>Guest Access:</strong> Create your account to access our Syndicate Classroom trainings and designated videos.
+              </div>
+            </div>
+
+            <form onSubmit={handleGuestSignUp} style={styles.form}>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Full Name</label>
+                <input 
+                  type="text" 
+                  style={styles.input} 
+                  placeholder="e.g. Jane Doe"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Email Address</label>
+                <input 
+                  type="email" 
+                  style={styles.input} 
+                  placeholder="name@example.com"
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Mobile Phone (for SMS updates)</label>
+                <input 
+                  type="tel" 
+                  style={styles.input} 
+                  placeholder="(915) 555-0123"
+                  value={guestPhone}
+                  onChange={(e) => setGuestPhone(e.target.value)}
+                />
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Create Password</label>
+                <div style={styles.passwordWrapper}>
+                  <input 
+                    type={showGuestPassword ? "text" : "password"} 
+                    style={styles.passwordInput} 
+                    placeholder="At least 6 characters"
+                    value={guestPassword}
+                    onChange={(e) => setGuestPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowGuestPassword(!showGuestPassword)} 
+                    style={styles.eyeBtn}
+                  >
+                    {showGuestPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Confirm Password</label>
+                <input 
+                  type="password" 
+                  style={styles.input} 
+                  placeholder="Repeat your password"
+                  value={guestConfirmPassword}
+                  onChange={(e) => setGuestConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              <button type="submit" className="btn-primary" style={styles.button} disabled={isLoading}>
+                {isLoading ? 'Creating Account...' : 'Create Guest Account & Enter Classroom'}
+              </button>
+
+              <div style={styles.switchOptionContainer}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Already have an account?</span>
+                <button 
+                  type="button" 
+                  onClick={() => switchMode('password')}
+                  style={styles.switchLinkBtn}
+                >
+                  Sign In
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
         {/* ----------------- STANDARD LOGIN MODES (PASSWORD / CODE) ----------------- */}
         {(authMode === 'password' || authMode === 'code') && (
           <>
-            {/* Mode Selector Tabs */}
+            {/* Top Level Mode Tabs: Sign In vs Guest Sign Up */}
             <div style={styles.tabContainer}>
               <button
                 type="button"
                 onClick={() => switchMode('password')}
                 style={{
                   ...styles.tabBtn,
-                  ...(authMode === 'password' ? styles.activeTabBtn : {})
+                  ...(authMode === 'password' || authMode === 'code' ? styles.activeTabBtn : {})
                 }}
               >
                 <Lock size={16} />
-                Password
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode('guest_signup')}
+                style={{
+                  ...styles.tabBtn,
+                  ...(authMode === 'guest_signup' ? styles.activeTabBtn : {})
+                }}
+              >
+                <UserPlus size={16} />
+                Create Guest Account
+              </button>
+            </div>
+
+            {/* Sub-Tabs: Password vs Email Code */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+              <button
+                type="button"
+                onClick={() => switchMode('password')}
+                style={{
+                  flex: 1,
+                  padding: '0.45rem 0.5rem',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  border: authMode === 'password' ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  backgroundColor: authMode === 'password' ? 'rgba(37, 99, 235, 0.06)' : 'transparent',
+                  color: authMode === 'password' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                  fontWeight: authMode === 'password' ? '600' : '400',
+                  cursor: 'pointer'
+                }}
+              >
+                Password Login
               </button>
               <button
                 type="button"
                 onClick={() => switchMode('code')}
                 style={{
-                  ...styles.tabBtn,
-                  ...(authMode === 'code' ? styles.activeTabBtn : {})
+                  flex: 1,
+                  padding: '0.45rem 0.5rem',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  border: authMode === 'code' ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  backgroundColor: authMode === 'code' ? 'rgba(37, 99, 235, 0.06)' : 'transparent',
+                  color: authMode === 'code' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                  fontWeight: authMode === 'code' ? '600' : '400',
+                  cursor: 'pointer'
                 }}
               >
-                <Mail size={16} />
-                Email Code
+                Email Code (OTP)
               </button>
             </div>
 
@@ -482,13 +689,13 @@ const SignIn = () => {
                   </button>
 
                   <div style={styles.switchOptionContainer}>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Prefer a one-time code?</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Want guest access?</span>
                     <button 
                       type="button" 
-                      onClick={() => switchMode('code')}
+                      onClick={() => switchMode('guest_signup')}
                       style={styles.switchLinkBtn}
                     >
-                      Sign in with Email Code
+                      Create Guest Account
                     </button>
                   </div>
                 </form>

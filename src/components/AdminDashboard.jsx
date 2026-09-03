@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
 import { useOpenHouse } from '../context/OpenHouseContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -393,9 +393,140 @@ const AdminDashboard = () => {
   const [editingPostId, setEditingPostId] = useState(null);
   const [editPostForm, setEditPostForm] = useState({ text: '', media: '', audio: '', presentation: '', tags: '' });
 
-  // Inbox State
+  // Inbox & SMS Messaging State
+  const [messagingSubTab, setMessagingSubTab] = useState('sms'); // 'sms' | 'chat'
   const [activeChatId, setActiveChatId] = useState(null);
   const [adminReply, setAdminReply] = useState('');
+
+  // LinqApp SMS Broadcast State
+  const [smsTargetType, setSmsTargetType] = useState('group'); // 'individual' | 'group' | 'all'
+  const [smsSelectedAgent, setSmsSelectedAgent] = useState(null);
+  const [smsCustomPhone, setSmsCustomPhone] = useState('');
+  const [smsCustomName, setSmsCustomName] = useState('');
+  const [smsSelectedGroup, setSmsSelectedGroup] = useState('onboarding'); // 'onboarding' | 'flex_agent' | 'team_agent' | 'guest' | 'admin'
+  const [smsMessage, setSmsMessage] = useState('');
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsResult, setSmsResult] = useState(null);
+  const [showRecipientsDrawer, setShowRecipientsDrawer] = useState(false);
+
+  // Helper to compute target recipients for LinqApp SMS
+  const getSmsRecipients = () => {
+    if (smsTargetType === 'individual') {
+      if (smsSelectedAgent) {
+        return [{
+          id: smsSelectedAgent.id,
+          name: smsSelectedAgent.name || smsSelectedAgent.id,
+          phone: smsSelectedAgent.profile?.phone || smsSelectedAgent.phone || '',
+          group: smsSelectedAgent.status || 'Agent'
+        }];
+      }
+      if (smsCustomPhone.trim()) {
+        return [{
+          id: 'custom',
+          name: smsCustomName.trim() || 'Custom Contact',
+          phone: smsCustomPhone.trim(),
+          group: 'Custom'
+        }];
+      }
+      return [];
+    }
+
+    if (smsTargetType === 'group') {
+      return (agents || []).filter(a => {
+        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+        if (smsSelectedGroup === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
+        if (smsSelectedGroup === 'flex_agent') return s === 'flex_agent';
+        if (smsSelectedGroup === 'team_agent') return s === 'team_agent';
+        if (smsSelectedGroup === 'guest') return s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest';
+        if (smsSelectedGroup === 'onboarding') return s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest');
+        return false;
+      }).map(a => ({
+        id: a.id,
+        name: a.name || a.id,
+        phone: a.profile?.phone || a.phone || '',
+        group: smsSelectedGroup
+      }));
+    }
+
+    if (smsTargetType === 'all') {
+      return (agents || []).map(a => ({
+        id: a.id,
+        name: a.name || a.id,
+        phone: a.profile?.phone || a.phone || '',
+        group: a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'agent')
+      }));
+    }
+
+    return [];
+  };
+
+  const handleSendSmsBroadcast = async (e) => {
+    e?.preventDefault();
+    if (!smsMessage.trim()) {
+      alert('Please enter a message to send.');
+      return;
+    }
+
+    const allRecipients = getSmsRecipients();
+    const validRecipients = allRecipients.filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10);
+
+    if (validRecipients.length === 0) {
+      alert('No valid recipients with 10-digit phone numbers found for this selection.');
+      return;
+    }
+
+    const targetLabel = smsTargetType === 'all' ? 'the ENTIRE Directory'
+      : smsTargetType === 'group' ? `all ${smsSelectedGroup.replace('_', ' ')} members`
+      : (validRecipients[0].name || validRecipients[0].phone);
+
+    if (!window.confirm(`Are you sure you want to send this SMS broadcast via LinqApp to ${validRecipients.length} recipient(s) (${targetLabel})?`)) {
+      return;
+    }
+
+    setSmsSending(true);
+    setSmsResult(null);
+
+    try {
+      const res = await fetch('/api/messages/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipients: validRecipients,
+          message: smsMessage,
+          groupName: smsTargetType === 'all' ? 'Entire Directory' : smsTargetType === 'group' ? smsSelectedGroup : 'Individual',
+          senderName: userName
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSmsResult({
+          success: true,
+          sentCount: data.sentCount,
+          failedCount: data.failedCount,
+          total: validRecipients.length,
+          results: data.results,
+          timestamp: new Date().toLocaleTimeString()
+        });
+        setSmsMessage('');
+        setActionSuccessMsg(`🚀 LinqApp SMS broadcast delivered! ${data.sentCount} sent successfully.`);
+        setTimeout(() => setActionSuccessMsg(''), 5000);
+      } else {
+        setSmsResult({
+          success: false,
+          error: data.error || 'Failed to dispatch SMS'
+        });
+      }
+    } catch (err) {
+      console.error('SMS broadcast error:', err);
+      setSmsResult({
+        success: false,
+        error: err.message || 'Network error dispatching SMS'
+      });
+    } finally {
+      setSmsSending(false);
+    }
+  };
 
   // Calendar Filter State
   const [eventFilterMonth, setEventFilterMonth] = useState(new Date().getMonth().toString());
@@ -406,7 +537,8 @@ const AdminDashboard = () => {
     admin: true,
     onboarding: true,
     flex_agent: false,
-    team_agent: false
+    team_agent: false,
+    guest: true
   });
   
   const toggleAgentGroup = (group) => {
@@ -652,6 +784,11 @@ const AdminDashboard = () => {
           alert('Error adding admin: ' + err.message);
           return;
         }
+      } else if (newUserRole === 'guest') {
+        await addAgent(normalizedEmail, newAgentName, null, null, newAgentPassword);
+        await updateAgentStatus(normalizedEmail, 'guest');
+        setActionSuccessMsg(`Guest account for ${newAgentName} created successfully!`);
+        setTimeout(() => setActionSuccessMsg(''), 4000);
       } else {
         const sponsorData = { name: sponsorName, phone: sponsorPhone, email: sponsorEmail };
         let coSponsorData = null;
@@ -828,7 +965,7 @@ const AdminDashboard = () => {
           style={{...styles.tabBtn, ...(activeTab === 'inbox' ? styles.activeTab : {})}}
           onClick={() => setActiveTab('inbox')}
         >
-          Inbox
+          📱 SMS & Messaging
         </button>
       </div>
 
@@ -868,7 +1005,8 @@ const AdminDashboard = () => {
                   <h4 className="text-sm font-semibold mb-2 text-dark-navy">User Details</h4>
                   <div style={{...styles.formGrid, gridTemplateColumns: '1fr 1fr 1fr'}}>
                     <select style={styles.input} value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
-                      <option value="agent">Agent</option>
+                      <option value="agent">Agent (Full Syndicate)</option>
+                      <option value="guest">Guest User (Classroom Only)</option>
                       <option value="admin">Administrator</option>
                     </select>
                     <input type="text" placeholder="Full Name" style={styles.input} value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} required />
@@ -1040,15 +1178,20 @@ const AdminDashboard = () => {
                 </thead>
                 <tbody>
 
-                  {['admin', 'onboarding', 'flex_agent', 'team_agent'].map(groupKey => {
-                    const groupTitle = groupKey === 'admin' ? 'Administrators' : groupKey === 'onboarding' ? 'Onboarding' : groupKey === 'flex_agent' ? 'Flex Agents' : 'Team Agents';
+                  {['admin', 'onboarding', 'flex_agent', 'team_agent', 'guest'].map(groupKey => {
+                    const groupTitle = groupKey === 'admin' ? 'Administrators' 
+                      : groupKey === 'onboarding' ? 'Onboarding Agents' 
+                      : groupKey === 'flex_agent' ? 'Flex Agents' 
+                      : groupKey === 'team_agent' ? 'Team Agents' 
+                      : 'Guest Users';
                     const groupAgents = agents
                       .filter(a => {
-                        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : 'onboarding');
+                        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
                         const matchesGroup = groupKey === 'admin' ? (s === 'admin' || a.profile?.role === 'Administrator')
                           : groupKey === 'flex_agent' ? s === 'flex_agent'
                           : groupKey === 'team_agent' ? s === 'team_agent'
-                          : (s !== 'flex_agent' && s !== 'team_agent' && s !== 'admin' && a.profile?.role !== 'Administrator');
+                          : groupKey === 'guest' ? (s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest')
+                          : (s !== 'flex_agent' && s !== 'team_agent' && s !== 'admin' && s !== 'guest' && a.role !== 'guest' && a.profile?.role !== 'Guest' && a.profile?.role !== 'Administrator');
                         
                         if (!matchesGroup) return false;
 
@@ -1087,21 +1230,27 @@ const AdminDashboard = () => {
                           <tr key={a.id} style={styles.roleTr}>
                             <td style={styles.roleTd}>
                               <div style={{display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap'}}>
-                                <div style={{width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold'}}>
+                                <div style={{width: '32px', height: '32px', borderRadius: '50%', backgroundColor: a.status === 'guest' || a.role === 'guest' ? '#64748b' : 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold'}}>
                                   {(a.name || '?').charAt(0)}
                                 </div>
                                 <span style={{ fontWeight: '500', color: 'var(--color-dark-navy)' }}>{a.name || 'Unknown Agent'}</span>
-                                <LevelBadge 
-                                  xp={a.xp || 0} 
-                                  thresholds={gamificationSettings?.levelThresholds} 
-                                  size="xs" 
-                                />
+                                {a.status === 'guest' || a.role === 'guest' ? (
+                                  <span style={{ fontSize: '0.72rem', backgroundColor: '#e2e8f0', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                                    GUEST
+                                  </span>
+                                ) : (
+                                  <LevelBadge 
+                                    xp={a.xp || 0} 
+                                    thresholds={gamificationSettings?.levelThresholds} 
+                                    size="xs" 
+                                  />
+                                )}
                               </div>
                             </td>
                             <td style={styles.roleTd}>{a.id}</td>
                             <td style={styles.roleTd}>
                               <select 
-                                value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : 'onboarding')} 
+                                value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'onboarding')} 
                                 onChange={(e) => updateAgentStatus(a.id, e.target.value)}
                                 style={styles.roleSelect}
                                 onClick={(e) => e.stopPropagation()}
@@ -1110,6 +1259,7 @@ const AdminDashboard = () => {
                                 <option value="onboarding">Onboarding</option>
                                 <option value="flex_agent">Flex Agent</option>
                                 <option value="team_agent">Team Agent</option>
+                                <option value="guest">Guest User</option>
                               </select>
                             </td>
                             <td style={styles.roleTd}>
@@ -2481,112 +2631,630 @@ const AdminDashboard = () => {
       )}
 
       {activeTab === 'inbox' && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', height: '600px' }}>
-          {/* Thread List */}
-          <div style={{ width: '300px', borderRight: '1px solid var(--color-border)', overflowY: 'auto', backgroundColor: 'var(--color-background)' }}>
-            <h3 style={{ padding: '1rem', margin: 0, borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-card-bg)' }}>
-              Messages
-            </h3>
-            {Object.keys(chats).length === 0 ? (
-              <p style={{ padding: '1rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>No messages yet.</p>
-            ) : (
-              Object.entries(chats).map(([agentId, chatData]) => (
-                <div 
-                  key={agentId} 
-                  onClick={() => setActiveChatId(agentId)}
-                  style={{
-                    padding: '1rem', 
-                    cursor: 'pointer', 
-                    borderBottom: '1px solid var(--color-border)',
-                    backgroundColor: activeChatId === agentId ? 'var(--color-white)' : 'transparent',
-                    borderLeft: activeChatId === agentId ? '3px solid var(--color-primary)' : '3px solid transparent'
-                  }}
-                >
-                  <div style={{ fontWeight: '600', color: 'var(--color-dark-navy)' }}>{chatData.agentName}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {chatData.messages[chatData.messages.length - 1]?.text || 'Started chat'}
-                  </div>
-                </div>
-              ))
-            )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Subtabs Switcher */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: 'var(--color-bg-secondary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--color-border)' }}>
+              <button
+                type="button"
+                onClick={() => setMessagingSubTab('sms')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.55rem 1.1rem',
+                  borderRadius: '7px',
+                  border: 'none',
+                  backgroundColor: messagingSubTab === 'sms' ? 'var(--color-primary)' : 'transparent',
+                  color: messagingSubTab === 'sms' ? 'white' : 'var(--color-text-secondary)',
+                  fontWeight: messagingSubTab === 'sms' ? '700' : '500',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Smartphone size={17} /> Linq SMS Broadcast
+              </button>
+              <button
+                type="button"
+                onClick={() => setMessagingSubTab('chat')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.55rem 1.1rem',
+                  borderRadius: '7px',
+                  border: 'none',
+                  backgroundColor: messagingSubTab === 'chat' ? 'var(--color-primary)' : 'transparent',
+                  color: messagingSubTab === 'chat' ? 'white' : 'var(--color-text-secondary)',
+                  fontWeight: messagingSubTab === 'chat' ? '700' : '500',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <MessageSquare size={17} /> Direct Portal Chats
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+              <Radio size={15} color="#10b981" />
+              <span>Official Linq Line: <strong style={{ color: 'var(--color-dark-navy)' }}>+1 (915) 494-7984</strong></span>
+            </div>
           </div>
 
-          {/* Active Chat Window */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-white)' }}>
-            {activeChatId && chats[activeChatId] ? (
-              <>
-                <div style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <MessageSquare size={18} /> Chatting with {chats[activeChatId].agentName}
+          {messagingSubTab === 'sms' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {/* Broadcast Header & Target Selector Card */}
+              <div className="card" style={{ padding: '1.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-dark-navy)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Smartphone size={22} color="var(--color-primary)" /> LinqApp SMS Broadcast Center
+                    </h2>
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: '0.88rem', margin: '0.25rem 0 0 0' }}>
+                      Send direct SMS text messages to individual agents, directory groups, or your entire roster simultaneously.
+                    </p>
+                  </div>
+
+                  {/* Target Audience Pill Selector */}
+                  <div style={{ display: 'flex', gap: '0.4rem', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSmsTargetType('group')}
+                      style={{
+                        padding: '0.4rem 0.85rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: smsTargetType === 'group' ? 'var(--color-dark-navy)' : 'transparent',
+                        color: smsTargetType === 'group' ? 'white' : 'var(--color-text-secondary)',
+                        fontWeight: '700',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Users size={14} style={{ display: 'inline', marginRight: '4px' }} /> Group Broadcast
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSmsTargetType('all')}
+                      style={{
+                        padding: '0.4rem 0.85rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: smsTargetType === 'all' ? 'var(--color-dark-navy)' : 'transparent',
+                        color: smsTargetType === 'all' ? 'white' : 'var(--color-text-secondary)',
+                        fontWeight: '700',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Radio size={14} style={{ display: 'inline', marginRight: '4px' }} /> Entire Directory
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSmsTargetType('individual')}
+                      style={{
+                        padding: '0.4rem 0.85rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: smsTargetType === 'individual' ? 'var(--color-dark-navy)' : 'transparent',
+                        color: smsTargetType === 'individual' ? 'white' : 'var(--color-text-secondary)',
+                        fontWeight: '700',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Individual / Custom
+                    </button>
+                  </div>
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {chats[activeChatId].messages.map((msg, idx) => {
-                    if (msg.isSystemMessage) {
-                      return (
-                        <div key={idx} style={{
-                          alignSelf: 'center',
-                          backgroundColor: 'rgba(0,0,0,0.05)',
-                          color: 'var(--color-text-muted)',
-                          padding: '0.5rem 1rem',
-                          borderRadius: '8px',
-                          fontSize: '0.85rem',
-                          fontWeight: '500',
-                          maxWidth: '90%',
-                          textAlign: 'center'
-                        }}>
-                          {msg.text}
-                        </div>
-                      )
-                    }
-                    
-                    return (
-                      <div key={idx} style={{
-                        alignSelf: msg.sender === 'Admin' ? 'flex-end' : 'flex-start',
-                        backgroundColor: msg.sender === 'Admin' ? 'var(--color-primary)' : 'var(--color-frosted-blue)',
-                        color: msg.sender === 'Admin' ? 'white' : 'var(--color-dark-navy)',
-                        padding: '0.75rem 1rem',
-                        borderRadius: '12px',
-                        maxWidth: '75%'
-                      }}>
-                        <div style={{ fontSize: '0.7rem', opacity: 0.7, marginBottom: '0.25rem' }}>{msg.sender}</div>
-                        <div>{msg.text}</div>
+
+                {/* Target Configuration Sub-Section */}
+                {smsTargetType === 'group' && (
+                  <div style={{ marginBottom: '1.25rem', padding: '1rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: 'var(--color-dark-navy)', marginBottom: '0.5rem' }}>
+                      Select Target Group:
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {[
+                        { id: 'onboarding', label: 'Onboarding Agents' },
+                        { id: 'flex_agent', label: 'Flex Agents' },
+                        { id: 'team_agent', label: 'Team Agents' },
+                        { id: 'guest', label: 'Guest Users (Classroom)' },
+                        { id: 'admin', label: 'Administrators' }
+                      ].map(g => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => setSmsSelectedGroup(g.id)}
+                          style={{
+                            padding: '0.45rem 0.9rem',
+                            borderRadius: '6px',
+                            border: smsSelectedGroup === g.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                            backgroundColor: smsSelectedGroup === g.id ? 'rgba(0, 161, 224, 0.1)' : 'white',
+                            color: smsSelectedGroup === g.id ? 'var(--color-primary)' : 'var(--color-text-primary)',
+                            fontWeight: smsSelectedGroup === g.id ? '800' : '500',
+                            fontSize: '0.85rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {g.label} ({agents.filter(a => {
+                            const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+                            if (g.id === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
+                            if (g.id === 'flex_agent') return s === 'flex_agent';
+                            if (g.id === 'team_agent') return s === 'team_agent';
+                            if (g.id === 'guest') return s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest';
+                            return s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest');
+                          }).length})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {smsTargetType === 'all' && (
+                  <div style={{ marginBottom: '1.25rem', padding: '1rem', backgroundColor: 'rgba(0, 161, 224, 0.06)', borderRadius: '8px', border: '1px solid rgba(0, 161, 224, 0.2)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <Radio size={22} color="var(--color-primary)" />
+                    <div>
+                      <div style={{ fontWeight: '700', color: 'var(--color-dark-navy)', fontSize: '0.9rem' }}>
+                        Entire Syndicate Directory Broadcast
                       </div>
-                    );
-                  })}
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                        This text message will be individually delivered to every active agent, guest, and administrator with a registered phone number.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {smsTargetType === 'individual' && (
+                  <div style={{ marginBottom: '1.25rem', padding: '1rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: 'var(--color-dark-navy)', marginBottom: '0.4rem' }}>
+                          Select Registered Agent:
+                        </label>
+                        <AgentAutocomplete
+                          agents={agents}
+                          placeholder="Search agent by name, email, or phone..."
+                          onSelect={(agent) => {
+                            setSmsSelectedAgent(agent);
+                            setSmsCustomPhone('');
+                          }}
+                        />
+                        {smsSelectedAgent && (
+                          <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'white', padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid var(--color-border)', fontSize: '0.82rem' }}>
+                            <span><strong>{smsSelectedAgent.name}</strong> ({smsSelectedAgent.profile?.phone || smsSelectedAgent.phone || 'No phone'})</span>
+                            <button type="button" onClick={() => setSmsSelectedAgent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)' }}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: 'var(--color-dark-navy)', marginBottom: '0.4rem' }}>
+                          Or Custom Phone Number & Name:
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            placeholder="Full Name (optional)"
+                            value={smsCustomName}
+                            onChange={(e) => {
+                              setSmsCustomName(e.target.value);
+                              if (e.target.value) setSmsSelectedAgent(null);
+                            }}
+                            style={{ ...styles.input, flex: 1 }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="+1 (915) 555-0199"
+                            value={smsCustomPhone}
+                            onChange={(e) => {
+                              setSmsCustomPhone(e.target.value);
+                              if (e.target.value) setSmsSelectedAgent(null);
+                            }}
+                            style={{ ...styles.input, flex: 1 }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Recipient Statistics & Expand Drawer */}
+                {(() => {
+                  const targetRecipients = getSmsRecipients();
+                  const validRecipients = targetRecipients.filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10);
+                  const missingPhoneRecipients = targetRecipients.filter(r => !r.phone || r.phone.replace(/\D/g, '').length < 10);
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--color-success)', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '700' }}>
+                            <CheckCircle2 size={14} /> {validRecipients.length} Recipient{validRecipients.length === 1 ? '' : 's'} Ready to Text
+                          </span>
+                          {missingPhoneRecipients.length > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-danger)', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '600' }}>
+                              <AlertCircle size={14} /> {missingPhoneRecipients.length} Missing Phone Number
+                            </span>
+                          )}
+                        </div>
+
+                        {targetRecipients.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowRecipientsDrawer(!showRecipientsDrawer)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--color-primary)',
+                              fontSize: '0.82rem',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}
+                          >
+                            {showRecipientsDrawer ? 'Hide Recipient List ▲' : `View All ${targetRecipients.length} Recipients ▼`}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Expandable Recipient List Drawer */}
+                      {showRecipientsDrawer && (
+                        <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: '8px', backgroundColor: '#fafafa', padding: '0.5rem' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                            {targetRecipients.map((r, idx) => {
+                              const hasPhone = r.phone && r.phone.replace(/\D/g, '').length >= 10;
+                              return (
+                                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.35rem 0.6rem', backgroundColor: 'white', borderRadius: '6px', border: hasPhone ? '1px solid #e2e8f0' : '1px dashed #fca5a5', fontSize: '0.78rem' }}>
+                                  <span style={{ fontWeight: '600', color: 'var(--color-dark-navy)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                    {r.name}
+                                  </span>
+                                  <span style={{ color: hasPhone ? 'var(--color-text-muted)' : '#ef4444', fontWeight: hasPhone ? '400' : '700' }}>
+                                    {hasPhone ? r.phone : 'No Phone'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Templates and Merge Tags Header */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--color-dark-navy)' }}>
+                      ⚡ QUICK TEMPLATES:
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      {[
+                        { label: '🎓 New Training', text: 'Hey {firstName}! 🎓 A new training session has just been released in the Syndicate Classroom. Watch it here: https://agentsyndicate.com/classroom' },
+                        { label: '🏡 Open House Alert', text: 'Team Alert! 🏡 New open house opportunities are now open for claiming on the portal: https://agentsyndicate.com/open-houses' },
+                        { label: '🚀 Mastermind Call', text: 'Hey {firstName}! 🚀 Reminder that our team mastermind call begins shortly. Check the training feed and calendar for Zoom details!' },
+                        { label: '👋 Guest Welcome', text: 'Welcome to eXp Syndicate {firstName}! 🌟 Your guest account is ready. Access our designated training classes here: https://agentsyndicate.com/classroom' }
+                      ].map((tpl, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSmsMessage(tpl.text)}
+                          style={{
+                            padding: '0.25rem 0.6rem',
+                            borderRadius: '4px',
+                            border: '1px solid var(--color-border)',
+                            backgroundColor: '#f8fafc',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            color: 'var(--color-dark-navy)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {tpl.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Merge Tags Quick Insert */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', backgroundColor: '#f1f5f9', padding: '0.4rem 0.75rem', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--color-text-secondary)' }}>
+                      Merge Tags:
+                    </span>
+                    {['{firstName}', '{name}', '{group}', '{team}'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setSmsMessage(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + tag + ' ')}
+                        style={{
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: 'white',
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          color: 'var(--color-primary)',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                        title={`Insert ${tag}`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginLeft: 'auto' }}>
+                      Tags auto-personalize for each recipient
+                    </span>
+                  </div>
                 </div>
-                <div style={{ padding: '1rem', borderTop: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem' }}>
-                  <input 
-                    type="text" 
-                    value={adminReply}
-                    onChange={(e) => setAdminReply(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && adminReply.trim()) {
-                        sendMessage(activeChatId, chats[activeChatId].agentName, adminReply, true);
-                        setAdminReply('');
-                      }
+
+                {/* Message Textarea */}
+                <div style={{ position: 'relative', marginBottom: '1rem' }}>
+                  <textarea
+                    rows={4}
+                    value={smsMessage}
+                    onChange={(e) => setSmsMessage(e.target.value)}
+                    placeholder="Type your SMS message here... Use {firstName} to personalize."
+                    style={{
+                      width: '100%',
+                      padding: '0.85rem 1rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--color-border)',
+                      fontSize: '0.92rem',
+                      fontFamily: 'inherit',
+                      boxSizing: 'border-box',
+                      resize: 'vertical',
+                      lineHeight: '1.5'
                     }}
-                    placeholder="Type your reply..."
-                    style={{ ...styles.input, flex: 1 }}
                   />
-                  <button 
-                    onClick={() => {
-                      if (adminReply.trim()) {
-                        sendMessage(activeChatId, chats[activeChatId].agentName, adminReply, true);
-                        setAdminReply('');
-                      }
-                    }}
-                    className="btn-primary"
-                    disabled={!adminReply.trim()}
-                  >
-                    <Send size={18} />
-                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.35rem', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                    <span>
+                      Length: <strong style={{ color: smsMessage.length > 160 ? '#f59e0b' : 'inherit' }}>{smsMessage.length}</strong> chars
+                      {' '}({smsMessage.length <= 160 ? (smsMessage.length > 0 ? '1' : '0') : Math.ceil(smsMessage.length / 153)} SMS segment{smsMessage.length > 160 ? 's' : ''})
+                    </span>
+                    {smsMessage.length > 300 && (
+                      <span style={{ color: '#f59e0b' }}>
+                        ⚠️ Multi-segment message. Standard SMS rates may apply.
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </>
-            ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
-                Select a conversation to start messaging.
+
+                {/* Send Button & Live Results */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={handleSendSmsBroadcast}
+                      disabled={smsSending || !smsMessage.trim() || getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length === 0}
+                      className="btn-primary"
+                      style={{
+                        padding: '0.65rem 1.4rem',
+                        fontSize: '0.92rem',
+                        fontWeight: '700',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        backgroundColor: smsSending ? '#94a3b8' : 'var(--color-primary)',
+                        cursor: smsSending ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {smsSending ? (
+                        <>
+                          <RefreshCw size={16} className="animate-spin" /> Dispatching via LinqApp...
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} /> Send Linq SMS ({getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length})
+                        </>
+                      )}
+                    </button>
+                    {smsMessage && (
+                      <button
+                        type="button"
+                        onClick={() => setSmsMessage('')}
+                        style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.85rem', cursor: 'pointer', padding: '0.5rem' }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                    Powered by <strong>LinqApp Partner API v3</strong>
+                  </div>
+                </div>
+
+                {/* Broadcast Outcome Banner */}
+                {smsResult && (
+                  <div style={{
+                    marginTop: '1.25rem',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    backgroundColor: smsResult.success ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                    border: smsResult.success ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem'
+                  }}>
+                    {smsResult.success ? <CheckCircle2 size={20} color="var(--color-success)" /> : <AlertCircle size={20} color="var(--color-danger)" />}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '700', color: 'var(--color-dark-navy)', fontSize: '0.9rem' }}>
+                        {smsResult.success ? `Broadcast Successfully Sent at ${smsResult.timestamp}` : 'Broadcast Encountered Issues'}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: 'var(--color-text-primary)', marginTop: '0.2rem' }}>
+                        {smsResult.success ? (
+                          `Delivered to ${smsResult.sentCount} recipient(s). Failed: ${smsResult.failedCount}.`
+                        ) : (
+                          `Error: ${smsResult.error}`
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* Message Preview Mockup Card */}
+              <div className="card" style={{ padding: '1.5rem', backgroundColor: '#f8fafc' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--color-dark-navy)', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Eye size={18} color="var(--color-primary)" /> Live Recipient Phone Preview
+                </h3>
+
+                <div style={{ maxWidth: '420px', margin: '0 auto', backgroundColor: 'white', borderRadius: '18px', border: '1px solid #cbd5e1', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                  {/* Phone Header */}
+                  <div style={{ backgroundColor: '#0f172a', color: 'white', padding: '0.75rem 1rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: '700' }}>+1 (915) 494-7984</div>
+                    <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>eXp Syndicate Linq Line</div>
+                  </div>
+
+                  {/* Phone Message Body */}
+                  <div style={{ padding: '1.25rem 1rem', minHeight: '140px', backgroundColor: '#f1f5f9', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                    <div style={{
+                      alignSelf: 'flex-start',
+                      backgroundColor: 'white',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '16px 16px 16px 4px',
+                      maxWidth: '85%',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
+                      fontSize: '0.85rem',
+                      color: '#1e293b',
+                      lineHeight: '1.4'
+                    }}>
+                      {smsMessage ? (
+                        smsMessage
+                          .replace(/{firstName}/g, 'Alex')
+                          .replace(/{name}/g, 'Alex Rivera')
+                          .replace(/{group}/g, smsSelectedGroup.replace('_', ' '))
+                          .replace(/{team}/g, 'eXp Syndicate')
+                      ) : (
+                        <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                          Message preview will appear here as you type...
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.4rem', paddingLeft: '4px' }}>
+                      Today • SMS via LinqApp
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Direct In-App Chat Threads */
+            <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', height: '600px' }}>
+              {/* Thread List */}
+              <div style={{ width: '300px', borderRight: '1px solid var(--color-border)', overflowY: 'auto', backgroundColor: 'var(--color-background)' }}>
+                <h3 style={{ padding: '1rem', margin: 0, borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-card-bg)' }}>
+                  In-App Messages
+                </h3>
+                {Object.keys(chats).length === 0 ? (
+                  <p style={{ padding: '1rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>No messages yet.</p>
+                ) : (
+                  Object.entries(chats).map(([agentId, chatData]) => (
+                    <div 
+                      key={agentId} 
+                      onClick={() => setActiveChatId(agentId)}
+                      style={{
+                        padding: '1rem', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid var(--color-border)',
+                        backgroundColor: activeChatId === agentId ? 'var(--color-white)' : 'transparent',
+                        borderLeft: activeChatId === agentId ? '3px solid var(--color-primary)' : '3px solid transparent'
+                      }}
+                    >
+                      <div style={{ fontWeight: '600', color: 'var(--color-dark-navy)' }}>{chatData.agentName}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {chatData.messages[chatData.messages.length - 1]?.text || 'Started chat'}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Active Chat Window */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-white)' }}>
+                {activeChatId && chats[activeChatId] ? (
+                  <>
+                    <div style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <MessageSquare size={18} /> Chatting with {chats[activeChatId].agentName}
+                    </div>
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {chats[activeChatId].messages.map((msg, idx) => {
+                        if (msg.isSystemMessage) {
+                          return (
+                            <div key={idx} style={{
+                              alignSelf: 'center',
+                              backgroundColor: 'rgba(0,0,0,0.05)',
+                              color: 'var(--color-text-muted)',
+                              padding: '0.5rem 1rem',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              fontWeight: '500',
+                              maxWidth: '90%',
+                              textAlign: 'center'
+                            }}>
+                              {msg.text}
+                            </div>
+                          )
+                        }
+                        
+                        return (
+                          <div key={idx} style={{
+                            alignSelf: msg.sender === 'Admin' ? 'flex-end' : 'flex-start',
+                            backgroundColor: msg.sender === 'Admin' ? 'var(--color-primary)' : 'var(--color-frosted-blue)',
+                            color: msg.sender === 'Admin' ? 'white' : 'var(--color-dark-navy)',
+                            padding: '0.75rem 1rem',
+                            borderRadius: '12px',
+                            maxWidth: '75%'
+                          }}>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginBottom: '0.25rem' }}>{msg.sender}</div>
+                            <div>{msg.text}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ padding: '1rem', borderTop: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem' }}>
+                      <input 
+                        type="text" 
+                        value={adminReply}
+                        onChange={(e) => setAdminReply(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && adminReply.trim()) {
+                            sendMessage(activeChatId, chats[activeChatId].agentName, adminReply, true);
+                            setAdminReply('');
+                          }
+                        }}
+                        placeholder="Type your reply..."
+                        style={{ ...styles.input, flex: 1 }}
+                      />
+                      <button 
+                        onClick={() => {
+                          if (adminReply.trim()) {
+                            sendMessage(activeChatId, chats[activeChatId].agentName, adminReply, true);
+                            setAdminReply('');
+                          }
+                        }}
+                        className="btn-primary"
+                        disabled={!adminReply.trim()}
+                      >
+                        <Send size={18} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
+                    Select a conversation to start messaging.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

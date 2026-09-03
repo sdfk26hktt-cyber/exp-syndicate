@@ -21,6 +21,8 @@ export const AuthProvider = ({ children }) => {
 
     const email = (session.user.email || session.user.phone || '').toLowerCase();
     let role = 'agent';
+    let agentDisplayName = session.user.user_metadata?.name || null;
+    let agentPhone = session.user.user_metadata?.phone || null;
 
     // Default master admin
     if (email === 'brian@brianburds.com' || email === 'brenda@brianburds.com') {
@@ -65,18 +67,30 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // 4. Check agents table status === 'admin'
-      if (role !== 'admin') {
-        try {
-          const { data: agentData } = await supabase.from('agents').select('status').ilike('id', email).single();
-          if (agentData?.status === 'admin') role = 'admin';
-        } catch (err) {
-          console.debug('agents table admin check:', err);
+      // 4. Check agents table status / role
+      try {
+        const { data: agentData } = await supabase.from('agents').select('*').ilike('id', email).single();
+        if (agentData) {
+          if (agentData.name) agentDisplayName = agentData.name;
+          if (agentData.profile?.phone || agentData.phone) agentPhone = agentData.profile?.phone || agentData.phone;
+          
+          if (agentData.status === 'admin' || agentData.role === 'admin' || agentData.profile?.role === 'Administrator') {
+            role = 'admin';
+          } else if (agentData.status === 'guest' || agentData.role === 'guest' || agentData.profile?.role === 'Guest') {
+            role = 'guest';
+          }
         }
+      } catch (err) {
+        console.debug('agents table role check:', err);
+      }
+
+      // Check session metadata for guest role fallback
+      if (role !== 'admin' && (session.user.user_metadata?.role === 'guest' || session.user.app_metadata?.role === 'guest')) {
+        role = 'guest';
       }
     }
 
-    const namePrefix = email.split('@')[0];
+    const namePrefix = agentDisplayName || email.split('@')[0];
     
     // In emulation mode, load the mock session instead
     const currentlyEmulating = localStorage.getItem('mockAdminSession');
@@ -86,17 +100,18 @@ export const AuthProvider = ({ children }) => {
         try {
           setCurrentUser(JSON.parse(mockSess));
         } catch(e) {
-          setCurrentUser({ id: session.user.id, role, name: namePrefix, email });
+          setCurrentUser({ id: session.user.id, role, name: namePrefix, email, phone: agentPhone });
         }
       } else {
-        setCurrentUser({ id: session.user.id, role, name: namePrefix, email });
+        setCurrentUser({ id: session.user.id, role, name: namePrefix, email, phone: agentPhone });
       }
     } else {
       setCurrentUser({
         id: session.user.id,
         role: role,
         name: namePrefix,
-        email: email
+        email: email,
+        phone: agentPhone
       });
     }
     setLoading(false);
@@ -305,6 +320,72 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  const signUpGuest = async (email, password, name, phone) => {
+    if (import.meta.env.VITE_SUPABASE_URL === undefined) {
+      throw new Error("Supabase is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.");
+    }
+    const safeEmail = (email || '').toLowerCase().trim();
+    const cleanName = (name || safeEmail.split('@')[0]).trim();
+    const cleanPhone = (phone || '').trim();
+
+    if (!safeEmail || !password) {
+      throw new Error("Email and password are required.");
+    }
+    if (password.length < 6) {
+      throw new Error("Password must be at least 6 characters long.");
+    }
+
+    // 1. Create auth user in Supabase
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: safeEmail,
+      password: password,
+      options: {
+        data: {
+          name: cleanName,
+          role: 'guest',
+          phone: cleanPhone
+        }
+      }
+    });
+
+    if (authError && !authError.message.includes('already registered')) {
+      throw authError;
+    }
+
+    // 2. Insert or upsert into agents table with guest status
+    const guestRecord = {
+      id: safeEmail,
+      name: cleanName,
+      xp: 0,
+      status: 'guest',
+      role: 'guest',
+      profile: {
+        role: 'Guest',
+        phone: cleanPhone,
+        email: safeEmail
+      },
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      await supabase.from('agents').upsert([guestRecord]);
+    } catch (dbErr) {
+      console.warn('Could not insert guest to agents table:', dbErr);
+    }
+
+    // 3. Authenticate user session
+    try {
+      const loginUser = await loginWithPassword(safeEmail, password);
+      return loginUser;
+    } catch (loginErr) {
+      // If email confirmation is strictly enforced in Supabase, return auth user info
+      if (authData?.user) {
+        return authData.user;
+      }
+      throw loginErr;
+    }
+  };
+
   const emulateUser = (agentProfile) => {
     if (currentUser?.role !== 'admin') return;
     
@@ -325,7 +406,7 @@ export const AuthProvider = ({ children }) => {
     // Create mock agent user from profile
     const emulatedUser = {
       id: agentProfile.id || agentEmail,
-      role: 'agent',
+      role: agentProfile.role === 'guest' || agentProfile.status === 'guest' ? 'guest' : 'agent',
       name: agentName,
       email: agentEmail,
       phone: agentPhone
@@ -335,7 +416,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('mockSession', JSON.stringify(emulatedUser));
     
     // Explicitly navigate to home to prevent route caching issues
-    window.location.href = '/';
+    window.location.href = emulatedUser.role === 'guest' ? '/classroom' : '/';
   };
 
   const stopEmulating = () => {
@@ -368,6 +449,7 @@ export const AuthProvider = ({ children }) => {
       requestOtp, 
       login, 
       loginWithPassword,
+      signUpGuest,
       updatePassword,
       resetPasswordForEmail,
       verifyOtpAndSetPassword,

@@ -81,6 +81,26 @@ const CoursePlayer = () => {
     );
   }
 
+  // If user is a guest and course is not guest-accessible
+  if (currentUser?.role === 'guest' && !currentCourse.allowGuests) {
+    return (
+      <div style={{ padding: '4rem 1.5rem', textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+        <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+          <Lock size={32} />
+        </div>
+        <h2 style={{ fontSize: '1.75rem', fontWeight: '800', marginBottom: '0.75rem', color: 'var(--color-dark-navy)' }}>
+          Syndicate Agent Exclusive Training
+        </h2>
+        <p style={{ color: 'var(--color-text-muted)', lineHeight: 1.6, marginBottom: '2rem' }}>
+          <strong>"{currentCourse.title}"</strong> is reserved for full eXp Syndicate team members. To unlock this course, our proprietary playbooks, and all team systems, contact an administrator to upgrade your guest account.
+        </p>
+        <Link to="/classroom" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+          <ArrowLeft size={16} /> Back to Guest Classroom
+        </Link>
+      </div>
+    );
+  }
+
   // Level Gating Check
   const requiredLevel = currentCourse.unlockLevel || 1;
   const currentLevel = gamificationSettings?.levelThresholds 

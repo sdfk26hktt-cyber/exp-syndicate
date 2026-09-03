@@ -22,16 +22,24 @@ import { CommunityProvider } from './context/CommunityContext';
 import { OpenHouseProvider } from './context/OpenHouseContext';
 import ExpLinksModal from './components/ExpLinksModal';
 
-const ProtectedRoute = ({ children, role }) => {
+const ProtectedRoute = ({ children, role, allowGuest = false }) => {
   const { currentUser } = useAuth();
   
   if (!currentUser) {
     return <Navigate to="/login" replace />;
   }
 
+  // Guest users are strictly limited to guest-allowed routes (Classroom & Settings)
+  if (currentUser.role === 'guest' && !allowGuest) {
+    return <Navigate to="/classroom" replace />;
+  }
+
   if (role && currentUser.role !== role) {
     if (currentUser.role === 'admin') {
       return <Navigate to="/admin" replace />;
+    }
+    if (currentUser.role === 'guest') {
+      return <Navigate to="/classroom" replace />;
     }
     return <Navigate to="/" replace />;
   }
@@ -230,7 +238,7 @@ function App() {
                 <Route 
                   path="/classroom" 
                   element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowGuest={true}>
                       <AppLayout>
                         <ClassroomHub />
                       </AppLayout>
@@ -240,7 +248,7 @@ function App() {
                 <Route 
                   path="/classroom/:courseId" 
                   element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowGuest={true}>
                       <AppLayout>
                         <CoursePlayer />
                       </AppLayout>
@@ -250,7 +258,7 @@ function App() {
                 <Route 
                   path="/classroom/:courseId/:lessonId" 
                   element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowGuest={true}>
                       <AppLayout>
                         <CoursePlayer />
                       </AppLayout>
@@ -270,7 +278,7 @@ function App() {
                 <Route 
                   path="/settings"  
                   element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowGuest={true}>
                       <AppLayout>
                         <Settings />
                       </AppLayout>

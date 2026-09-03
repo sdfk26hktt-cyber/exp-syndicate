@@ -567,6 +567,39 @@ const ClassroomManager = () => {
                     placeholder="https://images.unsplash.com/..."
                   />
                 </div>
+
+                <div style={{ 
+                  gridColumn: 'span 2', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.75rem', 
+                  padding: '0.85rem 1rem', 
+                  backgroundColor: activeCourse.allowGuests ? 'rgba(16, 185, 129, 0.08)' : '#f8fafc', 
+                  border: activeCourse.allowGuests ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--color-border)', 
+                  borderRadius: '8px',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <input
+                    type="checkbox"
+                    id={`allowGuests-${activeCourse.id}`}
+                    checked={!!activeCourse.allowGuests}
+                    onChange={(e) => updateCourseField('allowGuests', e.target.checked)}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+                  />
+                  <label htmlFor={`allowGuests-${activeCourse.id}`} style={{ cursor: 'pointer', fontSize: '0.88rem', color: 'var(--color-dark-navy)', display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      🎓 Allow Guest Access (Designated Training)
+                      {activeCourse.allowGuests && (
+                        <span style={{ fontSize: '0.75rem', backgroundColor: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '12px', fontWeight: '800' }}>
+                          GUEST ACCESSIBLE
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                      When checked, self-registered guest profiles can view and complete this course. Unchecked courses remain exclusive to full Syndicate Agents.
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
 

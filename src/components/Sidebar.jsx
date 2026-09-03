@@ -33,6 +33,18 @@ const Sidebar = () => {
                 <span>Admin Panel</span>
               </NavLink>
             </li>
+          ) : currentUser?.role === 'guest' ? (
+            <>
+              <li>
+                <NavLink 
+                  to="/classroom" 
+                  style={({ isActive }) => isActive ? { ...styles.navLink, ...styles.navLinkActive } : styles.navLink}
+                >
+                  <GraduationCap size={20} />
+                  <span>Classroom</span>
+                </NavLink>
+              </li>
+            </>
           ) : (
             <>
               <li>
@@ -111,7 +123,7 @@ const Sidebar = () => {
           )}
 
           {/* Accessible to admin and team_agent only */}
-          {(currentUser?.role === 'admin' || currentAgentData?.status === 'team_agent') && (
+          {currentUser?.role !== 'guest' && (currentUser?.role === 'admin' || currentAgentData?.status === 'team_agent') && (
             <li>
               <NavLink 
                 to="/passwords" 

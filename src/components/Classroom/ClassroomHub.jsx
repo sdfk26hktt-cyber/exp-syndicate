@@ -47,8 +47,9 @@ const ClassroomHub = () => {
     const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
     const isFinished = totalLessons > 0 && completedCount >= totalLessons;
 
+    const isGuest = currentUser?.role === 'guest';
     const requiredLevel = course.unlockLevel || 1;
-    const isLocked = currentLevel < requiredLevel;
+    const isLocked = isGuest ? !course.allowGuests : (currentLevel < requiredLevel);
     
     // Find required level title and XP needed
     const reqThreshold = (gamificationSettings?.levelThresholds || []).find(t => t.level === requiredLevel);
@@ -64,7 +65,9 @@ const ClassroomHub = () => {
       isLocked,
       requiredLevel,
       reqLevelTitle,
-      xpNeeded
+      xpNeeded,
+      isGuest,
+      allowGuests: course.allowGuests
     };
   };
 
@@ -89,6 +92,10 @@ const ClassroomHub = () => {
 
   const handleOpenCourse = (course) => {
     const stats = getCourseStats(course);
+    if (currentUser?.role === 'guest' && !course.allowGuests) {
+      alert(`🔒 "${course.title}" is exclusive to full Syndicate Agents. Contact an administrator to upgrade your guest account.`);
+      return;
+    }
     if (stats.isLocked && currentUser?.role !== 'admin') {
       alert(`🔒 This course unlocks at Level ${stats.requiredLevel} (${stats.reqLevelTitle}). You need ${stats.xpNeeded} more XP to access this training!`);
       return;
@@ -299,7 +306,32 @@ const ClassroomHub = () => {
                 </span>
 
                 {/* Lock or Unlock Level Badge */}
-                {stats.isLocked ? (
+                {currentUser?.role === 'guest' ? (
+                  course.allowGuests ? (
+                    <div style={{
+                      position: 'absolute',
+                      top: '12px',
+                      right: '12px',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      fontWeight: '800',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    }}>
+                      🎓 GUEST ACCESS
+                    </div>
+                  ) : (
+                    <div style={{ ...styles.lockBadge, backgroundColor: 'rgba(239, 68, 68, 0.9)' }}>
+                      <Lock size={13} style={{ marginRight: '4px' }} />
+                      <span>Syndicate Only</span>
+                    </div>
+                  )
+                ) : stats.isLocked ? (
                   <div style={styles.lockBadge}>
                     <Lock size={13} style={{ marginRight: '4px' }} />
                     <span>Requires Lv. {stats.requiredLevel}</span>
