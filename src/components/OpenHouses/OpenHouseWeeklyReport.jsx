@@ -252,7 +252,7 @@ const OpenHouseWeeklyReport = ({ onClose }) => {
         <div style={{ borderBottom: '2px solid var(--color-dark-navy)', paddingBottom: '1.25rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-              <img src="/long-syndicate.png" alt="eXp Syndicate" style={{ height: '32px', width: 'auto' }} />
+              <img src="/long-syndicate-dark.png" alt="eXp Syndicate" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
             </div>
             <h1 style={{ margin: '0.5rem 0 0.2rem 0', fontSize: '1.6rem', fontWeight: 800, color: 'var(--color-dark-navy)' }}>
               Weekly Open House Master Schedule

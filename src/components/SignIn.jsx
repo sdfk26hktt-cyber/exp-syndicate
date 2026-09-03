@@ -254,7 +254,7 @@ const SignIn = () => {
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.logoContainer}>
-          <img src="/long-syndicate.png" alt="EXP Syndicate" className="dynamic-logo" style={{ height: '48px', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
+          <img src="/long-syndicate-dark.png" alt="EXP Syndicate" className="dynamic-logo" style={{ height: '48px', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
         </div>
         <h2 style={styles.title}>Welcome to The Syndicate</h2>
 
