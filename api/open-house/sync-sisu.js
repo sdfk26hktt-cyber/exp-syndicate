@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 const sisuApiKey = process.env.SISU_API_KEY;
-const fubApiKey = process.env.FUB_API_KEY;
+const fubApiKey = process.env.FUB_API_KEY || 'fka_0GE0sHDxHWDK9pfJSqkQw2Y23Fme0R2mUS';
 
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
@@ -47,6 +47,9 @@ async function fetchSierraFeaturedListings() {
       if (matches.length === 0) break;
 
       for (const cardHtml of matches) {
+        // Skip skeleton placeholder cards
+        if (cardHtml.includes('ph-item') || cardHtml.includes('ph-picture')) continue;
+
         // 1. MLS Number
         const mlsAttrMatch = cardHtml.match(/data-mls=["'](\d+)["']/i);
         const mlsInfoMatch = cardHtml.match(/<div[^>]*class=["']si-listing__info-value["'][^>]*>\s*<span>(\d+)<\/span>\s*<\/div>\s*<div[^>]*class=["']si-listing__info-label["'][^>]*>\s*MLS/i);
@@ -190,12 +193,21 @@ export default async function handler(req, res) {
           if (!deals.length) break;
         }
 
-        // Filter for Sisu Sellers in active / live stages
+        // Filter for Sisu Sellers / Sellers in active or upcoming listing stages
         const activeDeals = allDeals.filter(d => {
-          if (d.pipelineName !== 'Sisu Sellers') return false;
+          if (d.pipelineName !== 'Sisu Sellers' && d.pipelineName !== 'Sellers') return false;
           if (d.status !== 'Active') return false;
           const stage = (d.stageName || '').toLowerCase();
-          return stage === 'mls live listings' || stage === 'signed' || stage === 'active' || stage.includes('live');
+          const hasAddress = Boolean(d.customAddressLine1 || (d.name && /\d+/.test(d.name)));
+          return (
+            stage === 'mls live listings' || 
+            stage === 'signed' || 
+            stage === 'listed' || 
+            stage === 'active' || 
+            stage.includes('live') || 
+            stage.includes('showing') || 
+            stage.includes('appointment')
+          ) && hasAddress;
         });
 
         if (activeDeals.length > 0) {
@@ -251,6 +263,8 @@ export default async function handler(req, res) {
         console.warn('Error fetching live Sisu deals from FUB:', fubErr.message);
       }
     }
+
+    const fubSisuCount = syncedListings.length;
 
     // 2. Direct Sisu API check if available and not yet populated
     if (syncedListings.length === 0 && sisuApiKey) {
@@ -346,7 +360,9 @@ export default async function handler(req, res) {
           profile: {
             listings: syncedListings,
             last_synced_at: new Date().toISOString(),
-            total_count: syncedListings.length
+            total_count: syncedListings.length,
+            sisu_count: fubSisuCount,
+            sierra_count: addedSierraCount
           }
         }]);
       } catch (dbErr) {
@@ -358,6 +374,8 @@ export default async function handler(req, res) {
       success: true,
       source,
       count: syncedListings.length,
+      sisuCount: fubSisuCount,
+      sierraCount: addedSierraCount,
       syncedAt: new Date().toISOString(),
       listings: syncedListings
     });

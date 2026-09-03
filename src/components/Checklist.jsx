@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { useAgent } from '../context/AgentContext';
 import { useAuth } from '../context/AuthContext';
 import { useCommunity } from '../context/CommunityContext';
-import { CheckCircle, Circle, AlertCircle, ChevronDown, ChevronUp, Star, Lock, Unlock } from 'lucide-react';
+import { CheckCircle, Circle, AlertCircle, ChevronDown, ChevronUp, Star, Lock, Unlock, BookOpen } from 'lucide-react';
 import TaskRunnerModal from './TaskRunnerModal';
 import { getLevelInfo, getPhaseUnlockStatus } from '../utils/gamification';
 
 const Checklist = () => {
-  const { phases, toggleItem, xp, gamificationSettings, currentAgentData } = useAgent();
+  const { phases, toggleItem, xp, gamificationSettings, currentAgentData, activePlaybook } = useAgent();
   const { currentUser } = useAuth();
   const { sendMessage } = useCommunity();
   const [expandedItems, setExpandedItems] = useState({});
@@ -52,8 +52,23 @@ const Checklist = () => {
         
         <div className="mb-6 flex justify-between items-start flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-semibold mb-2">The Onboarding Playbook</h1>
-            <p className="text-muted m-0">Your step-by-step progressive guide to joining and launching with eXp Syndicate.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <h1 className="text-2xl font-semibold m-0">{activePlaybook?.title || 'The Onboarding Playbook'}</h1>
+              {activePlaybook?.targetRole && (
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '999px',
+                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                  color: 'var(--color-primary)'
+                }}>
+                  {activePlaybook.targetRole.replace('_', ' ')}
+                </span>
+              )}
+            </div>
+            <p className="text-muted m-0">{activePlaybook?.description || 'Your step-by-step progressive guide to joining and launching with eXp Syndicate.'}</p>
           </div>
           <div style={styles.topLevelPill}>
             <span style={{ color: 'var(--color-primary)', fontWeight: '700' }}>Level {levelInfo.level}</span>

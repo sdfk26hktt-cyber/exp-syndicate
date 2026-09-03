@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
 import { useOpenHouse } from '../context/OpenHouseContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info, MapPin } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info, MapPin, BookOpen } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -40,12 +40,15 @@ const AdminDashboard = () => {
     awardAgentXp,
     gamificationSettings,
     updateGamificationSettings,
-    loadAgents
+    loadAgents,
+    playbookCatalog,
+    assignPlaybookToAgent
   } = useAgent();
   const { events, posts, addPost, updatePost, deletePost, addEvent, updateEvent, deleteEvent, approveEvent, rejectEvent, chats, sendMessage } = useCommunity();
   const userName = currentAgentData?.name || currentUser?.name || currentUser?.email || 'Admin';
   
   const [activeTab, setActiveTab] = useState('pipeline'); // 'pipeline' | 'community' | 'calendar' | 'inbox' | 'feed-preview' | 'admins' | 'playbooks'
+  const [resourceSubTab, setResourceSubTab] = useState('resources'); // 'resources' | 'playbooks'
   
   // Admin Management State
   const [adminsList, setAdminsList] = useState(() => {
@@ -284,6 +287,7 @@ const AdminDashboard = () => {
   const [editAgentState, setEditAgentState] = useState('TX');
   const [editAgentStatus, setEditAgentStatus] = useState('onboarding');
   const [editAgentTeamSubrole, setEditAgentTeamSubrole] = useState('team_agent');
+  const [editAgentPlaybookId, setEditAgentPlaybookId] = useState('');
   const [editAgentLicense, setEditAgentLicense] = useState('');
   const [editAgentEmergencyName, setEditAgentEmergencyName] = useState('');
   const [editAgentEmergencyPhone, setEditAgentEmergencyPhone] = useState('');
@@ -313,12 +317,14 @@ const AdminDashboard = () => {
       city: editAgentCity,
       state: editAgentState,
       team_subrole: editAgentTeamSubrole,
+      playbook_id: editAgentPlaybookId || null,
       licenseNumber: editAgentLicense,
       emergencyName: editAgentEmergencyName,
       emergencyPhone: editAgentEmergencyPhone
     };
 
     try {
+      const targetAgentId = cleanNewEmail !== cleanOldEmail ? cleanNewEmail : editingAgent.id;
       if (cleanNewEmail !== cleanOldEmail) {
         await adminChangeAgentEmail(cleanOldEmail, cleanNewEmail, profileUpdates, editAgentName);
         if (editAgentStatus) {
@@ -331,6 +337,13 @@ const AdminDashboard = () => {
           await updateAgentStatus(editingAgent.id, editAgentStatus);
         }
         setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
+      }
+      if (editAgentPlaybookId && typeof assignPlaybookToAgent === 'function') {
+        try {
+          await assignPlaybookToAgent(targetAgentId, editAgentPlaybookId);
+        } catch (pbErr) {
+          console.debug('Failed to assign playbook:', pbErr);
+        }
       }
       setEditingAgent(null);
       setTimeout(() => setActionSuccessMsg(''), 4000);
@@ -749,8 +762,12 @@ const AdminDashboard = () => {
 
   const handleSisuSync = async () => {
     const res = await syncSisuListings();
-    setActionSuccessMsg(`Sisu listings refreshed (${res.count || listings.length} active listings).`);
-    setTimeout(() => setActionSuccessMsg(''), 4000);
+    if (res?.sierraCount || res?.sisuCount) {
+      setActionSuccessMsg(`⚡ Successfully synced ${res.count || listings.length} active listings (${res.sisuCount || 0} Sisu/FUB deals + ${res.sierraCount || 0} Sierra MLS featured properties).`);
+    } else {
+      setActionSuccessMsg(`⚡ Listings feed refreshed (${res?.count || listings.length} active listings).`);
+    }
+    setTimeout(() => setActionSuccessMsg(''), 6000);
   };
 
   const handleTriggerReportNotification = async () => {
@@ -1527,6 +1544,7 @@ const AdminDashboard = () => {
                                       setEditAgentState(a.profile?.state || 'TX');
                                       setEditAgentStatus(a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'onboarding'));
                                       setEditAgentTeamSubrole(a.profile?.team_subrole || 'team_agent');
+                                      setEditAgentPlaybookId(a.profile?.playbook_id || '');
                                       setEditAgentLicense(a.profile?.licenseNumber || '');
                                       setEditAgentEmergencyName(a.profile?.emergencyName || '');
                                       setEditAgentEmergencyPhone(a.profile?.emergencyPhone || '');
@@ -1784,6 +1802,33 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                       )}
+                    </div>
+
+                    {/* Playbook Assignment */}
+                    <div style={{ backgroundColor: 'rgba(37, 99, 235, 0.04)', padding: '0.85rem', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.45rem' }}>
+                        <BookOpen size={16} color="var(--color-primary)" />
+                        <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--color-dark-navy)' }}>
+                          ASSIGNED PLAYBOOK / ROADMAP
+                        </span>
+                      </div>
+                      <div>
+                        <select
+                          value={editAgentPlaybookId}
+                          onChange={(e) => setEditAgentPlaybookId(e.target.value)}
+                          style={styles.input}
+                        >
+                          <option value="">⚡ Auto-Assign based on Role & Status (Default Track)</option>
+                          {playbookCatalog && playbookCatalog.map(p => (
+                            <option key={p.id} value={p.id}>
+                              📋 {p.title} ({p.targetRole || 'general'}) — {p.phases?.length || 0} Phases
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-muted" style={{ margin: '0.35rem 0 0 0' }}>
+                          Assigning a custom playbook dynamically updates this agent's dashboard checklist and phase milestones.
+                        </p>
+                      </div>
                     </div>
 
                     <div style={styles.formGrid}>
@@ -2056,9 +2101,10 @@ const AdminDashboard = () => {
                       disabled={isSyncing}
                       className="btn-primary"
                       style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+                      title="Force pull newest listings from Sisu Sellers CRM and Sierra Interactive ephomesonline.com feed"
                     >
                       <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
-                      {isSyncing ? 'Syncing Sisu...' : 'Refresh Listings Feed'}
+                      {isSyncing ? 'Syncing Sisu & Sierra...' : '⚡ Force Refresh Listings (Sisu + Sierra)'}
                     </button>
                   </div>
                 </div>
@@ -3772,15 +3818,67 @@ const AdminDashboard = () => {
       )}
 
       {activeTab === 'resources' && (
-        <>
-          <div className="mt-4 border rounded-lg overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
-            <ResourceBoard />
+        <div className="mt-4">
+          {/* Sub-Navigation for Resources vs Playbooks */}
+          <div style={{
+            display: 'flex',
+            gap: '0.75rem',
+            marginBottom: '1.5rem',
+            borderBottom: '1px solid var(--color-border)',
+            paddingBottom: '0.75rem'
+          }}>
+            <button
+              onClick={() => setResourceSubTab('resources')}
+              style={{
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '700',
+                fontSize: '0.88rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                backgroundColor: resourceSubTab === 'resources' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
+                color: resourceSubTab === 'resources' ? '#ffffff' : 'var(--color-text-muted)',
+                boxShadow: resourceSubTab === 'resources' ? '0 2px 6px rgba(0, 161, 224, 0.3)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <FileText size={16} /> 📚 Resource & Knowledge Base Manager
+            </button>
+            <button
+              onClick={() => setResourceSubTab('playbooks')}
+              style={{
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '700',
+                fontSize: '0.88rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                backgroundColor: resourceSubTab === 'playbooks' ? 'var(--color-primary)' : 'var(--color-bg-secondary)',
+                color: resourceSubTab === 'playbooks' ? '#ffffff' : 'var(--color-text-muted)',
+                boxShadow: resourceSubTab === 'playbooks' ? '0 2px 6px rgba(0, 161, 224, 0.3)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <BookOpen size={16} /> 📋 Playbook Catalog & Track Editor ({playbookCatalog?.length || 0})
+            </button>
           </div>
 
-          <div className="mt-8">
-            <PlaybookManager />
-          </div>
-        </>
+          {resourceSubTab === 'resources' ? (
+            <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)' }}>
+              <ResourceBoard />
+            </div>
+          ) : (
+            <div>
+              <PlaybookManager />
+            </div>
+          )}
+        </div>
       )}
 
       {activeTab === 'classroom' && (

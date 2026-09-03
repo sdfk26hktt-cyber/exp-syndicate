@@ -315,7 +315,13 @@ export const OpenHouseProvider = ({ children }) => {
           try { localStorage.setItem('syndicate_open_house_last_synced', syncedTime); } catch (e) { console.debug(e); }
         }
         await loadOpenHouseData();
-        return { success: true, count: data.count, source: data.source };
+        return { 
+          success: true, 
+          count: data.count || data.listings?.length || 0, 
+          sisuCount: data.sisuCount || 0,
+          sierraCount: data.sierraCount || 0,
+          source: data.source || 'live_feed' 
+        };
       } else {
         // Client-side fallback if serverless endpoint is offline
         const nowIso = new Date().toISOString();
@@ -323,7 +329,7 @@ export const OpenHouseProvider = ({ children }) => {
         persistListings(updated);
         setLastSyncedAt(nowIso);
         try { localStorage.setItem('syndicate_open_house_last_synced', nowIso); } catch (e) { console.debug(e); }
-        return { success: true, count: listings.length, source: 'cached' };
+        return { success: true, count: listings.length, sisuCount: listings.length, sierraCount: 0, source: 'cached' };
       }
     } catch (err) {
       console.warn('Error invoking /api/open-house/sync-sisu, refreshing cached inventory:', err);
@@ -332,7 +338,7 @@ export const OpenHouseProvider = ({ children }) => {
       persistListings(updated);
       setLastSyncedAt(nowIso);
       try { localStorage.setItem('syndicate_open_house_last_synced', nowIso); } catch (e) { console.debug(e); }
-      return { success: true, count: listings.length, source: 'cached' };
+      return { success: true, count: listings.length, sisuCount: listings.length, sierraCount: 0, source: 'cached' };
     } finally {
       setIsSyncing(false);
     }
