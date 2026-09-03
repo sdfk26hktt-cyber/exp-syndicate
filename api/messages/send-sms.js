@@ -71,6 +71,10 @@ export default async function handler(req, res) {
       .replace(/{firstName}/gi, firstName)
       .replace(/{name}/gi, fullName)
       .replace(/{fullName}/gi, fullName)
+      .replace(/{role}/gi, rec.role || rec.group || 'Agent')
+      .replace(/{market}/gi, rec.market || 'In-Market')
+      .replace(/{city}/gi, rec.city || '')
+      .replace(/{state}/gi, rec.state || '')
       .replace(/{group}/gi, groupName || 'Syndicate')
       .replace(/{team}/gi, 'eXp Syndicate');
 

@@ -217,6 +217,10 @@ export const AgentProvider = ({ children }) => {
     phone: '',
     altPhone: '',
     address: '',
+    city: 'El Paso',
+    state: 'TX',
+    market: 'el_paso', // 'el_paso' | 'texas_other' | 'out_of_state'
+    team_subrole: 'team_agent', // 'team_agent' | 'showing_partner'
     birthday: '',
     licenseNumber: '',
     website: '',
@@ -807,10 +811,85 @@ export const AgentProvider = ({ children }) => {
     return { success: true, oldEmail: safeOldEmail, newEmail: safeNewEmail };
   };
 
+  const getAgentMarket = (agent) => {
+    if (!agent) return 'el_paso';
+    const p = agent.profile || {};
+    if (p.market) return p.market;
+    
+    // Auto-infer from state/city/address if not explicitly specified
+    const addr = (p.address || agent.address || '').toLowerCase();
+    const state = (p.state || '').toUpperCase().trim();
+    const city = (p.city || '').toLowerCase().trim();
+
+    if (city.includes('el paso') || addr.includes('el paso') || addr.includes('799') || addr.includes('anthony') || addr.includes('canutillo') || addr.includes('horizon') || addr.includes('socorro')) {
+      return 'el_paso';
+    }
+    if (state === 'TX' || state === 'TEXAS' || addr.includes(' texas') || addr.includes(', tx') || addr.includes(' tx ')) {
+      return 'texas_other';
+    }
+    if (state && state !== 'TX' && state !== 'TEXAS') {
+      return 'out_of_state';
+    }
+    return 'el_paso'; // Default to team HQ market
+  };
+
+  const getAgentMarketLabel = (agent) => {
+    const m = getAgentMarket(agent);
+    if (m === 'el_paso') return 'El Paso (In-Market)';
+    if (m === 'texas_other') return 'Texas (Other TX)';
+    if (m === 'out_of_state') return 'Out of State';
+    return 'In-Market';
+  };
+
+  const getAgentRoleLabel = (agent) => {
+    if (!agent) return 'Agent';
+    const status = agent.status || (agent.profile?.role === 'Administrator' ? 'admin' : agent.role === 'guest' ? 'guest' : 'onboarding');
+    if (status === 'admin' || agent.profile?.role === 'Administrator') return 'Administrator';
+    if (status === 'guest' || agent.role === 'guest' || agent.profile?.role === 'Guest') return 'Guest';
+    if (status === 'team_agent') {
+      const subrole = agent.profile?.team_subrole || 'team_agent';
+      return subrole === 'showing_partner' ? 'Showing Partner' : 'Team Agent';
+    }
+    if (status === 'flex_agent') return 'Flex Agent';
+    if (status === 'onboarding') return 'Onboarding Agent';
+    return 'Agent';
+  };
+
+  const isAgentInMarket = (agent) => getAgentMarket(agent) === 'el_paso';
+  const isAgentTexas = (agent) => {
+    const m = getAgentMarket(agent);
+    return m === 'el_paso' || m === 'texas_other';
+  };
+  const isAgentOutOfMarket = (agent) => {
+    const m = getAgentMarket(agent);
+    return m === 'texas_other' || m === 'out_of_state';
+  };
+
   const updateAgentStatus = async (agentId, newStatus) => {
     await supabase.from('agents').update({ status: newStatus }).ilike('id', agentId);
     if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
       setCurrentAgentData({ ...currentAgentData, status: newStatus });
+    }
+    loadAgents();
+  };
+
+  const adminUpdateAgentRoleAndMarket = async (agentId, newStatus, teamSubrole, market) => {
+    const target = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
+    const existingProfile = target?.profile || {};
+    const updatedProfile = {
+      ...existingProfile,
+      ...(teamSubrole ? { team_subrole: teamSubrole } : {}),
+      ...(market ? { market: market } : {})
+    };
+
+    const updatePayload = {
+      ...(newStatus ? { status: newStatus } : {}),
+      profile: updatedProfile
+    };
+
+    await supabase.from('agents').update(updatePayload).ilike('id', agentId);
+    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
+      setCurrentAgentData({ ...currentAgentData, ...updatePayload });
     }
     loadAgents();
   };
@@ -946,6 +1025,13 @@ export const AgentProvider = ({ children }) => {
       adminUpdateAgent, 
       adminChangeAgentEmail, 
       updateAgentStatus, 
+      adminUpdateAgentRoleAndMarket,
+      getAgentMarket,
+      getAgentMarketLabel,
+      getAgentRoleLabel,
+      isAgentInMarket,
+      isAgentTexas,
+      isAgentOutOfMarket,
       updateAgentPhase, 
       deleteAgent, 
       updateGlobalPlaybooks,

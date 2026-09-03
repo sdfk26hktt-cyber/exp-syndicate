@@ -44,6 +44,12 @@ const Settings = () => {
   const [profileEmergencyPhone, setProfileEmergencyPhone] = useState('');
   const [profileEmergencyRelation, setProfileEmergencyRelation] = useState('');
 
+  // Market & Territory Classification
+  const [profileMarket, setProfileMarket] = useState('el_paso');
+  const [profileCity, setProfileCity] = useState('El Paso');
+  const [profileState, setProfileState] = useState('TX');
+  const [profileTeamSubrole, setProfileTeamSubrole] = useState('team_agent');
+
   // Professional & Social
   const [profileLicense, setProfileLicense] = useState('');
   const [profileWebsite, setProfileWebsite] = useState('');
@@ -81,6 +87,10 @@ const Settings = () => {
       setProfilePhone(p.phone || '');
       setProfileAltPhone(p.altPhone || '');
       setProfileAddress(p.address || '');
+      setProfileMarket(p.market || 'el_paso');
+      setProfileCity(p.city || 'El Paso');
+      setProfileState(p.state || 'TX');
+      setProfileTeamSubrole(p.team_subrole || 'team_agent');
       setProfilePreferredContact(p.preferredContact || 'phone');
       setProfileEmergencyName(p.emergencyName || '');
       setProfileEmergencyPhone(p.emergencyPhone || '');
@@ -100,6 +110,9 @@ const Settings = () => {
       setProfilePhone(p.phone || '');
       setProfileAltPhone(p.altPhone || '');
       setProfileAddress(p.address || '');
+      setProfileMarket(p.market || 'el_paso');
+      setProfileCity(p.city || 'El Paso');
+      setProfileState(p.state || 'TX');
       setProfilePreferredContact(p.preferredContact || 'phone');
     }
   }, [currentUser, currentAgentData]);
@@ -115,6 +128,10 @@ const Settings = () => {
           phone: profilePhone,
           altPhone: profileAltPhone,
           address: profileAddress,
+          market: profileMarket,
+          city: profileCity,
+          state: profileState,
+          team_subrole: profileTeamSubrole,
           preferredContact: profilePreferredContact,
           emergencyName: profileEmergencyName,
           emergencyPhone: profileEmergencyPhone,
@@ -400,6 +417,53 @@ const Settings = () => {
                     value={profileAddress} 
                     onChange={(e) => setProfileAddress(e.target.value)} 
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Market & Location Classification */}
+            <div style={styles.sectionCard}>
+              <h3 style={styles.sectionHeading}>
+                <MapPin size={16} color="var(--color-primary)" /> Market & Location Classification
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', margin: '0 0 1rem 0' }}>
+                Classifying your market ensures team broadcasts, open house alerts, and mastermind invitations are tailored to your territory.
+              </p>
+              <div style={styles.formGrid}>
+                <div style={styles.inputGroup}>
+                  <label style={styles.label}>Designated Market *</label>
+                  <select 
+                    style={styles.input}
+                    value={profileMarket}
+                    onChange={(e) => setProfileMarket(e.target.value)}
+                  >
+                    <option value="el_paso">📍 El Paso (In-Market)</option>
+                    <option value="texas_other">🤠 Texas (Other TX Markets - Out of Market)</option>
+                    <option value="out_of_state">✈️ Out of State (Out of Market)</option>
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '0.75rem' }}>
+                  <div style={styles.inputGroup}>
+                    <label style={styles.label}>City</label>
+                    <input 
+                      type="text" 
+                      style={styles.input} 
+                      placeholder="e.g. El Paso, San Antonio, Austin"
+                      value={profileCity} 
+                      onChange={(e) => setProfileCity(e.target.value)} 
+                    />
+                  </div>
+                  <div style={styles.inputGroup}>
+                    <label style={styles.label}>State</label>
+                    <input 
+                      type="text" 
+                      style={styles.input} 
+                      placeholder="TX"
+                      maxLength={2}
+                      value={profileState} 
+                      onChange={(e) => setProfileState(e.target.value.toUpperCase())} 
+                    />
+                  </div>
                 </div>
               </div>
             </div>

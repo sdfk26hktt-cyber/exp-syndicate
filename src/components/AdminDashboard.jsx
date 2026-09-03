@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
 import { useOpenHouse } from '../context/OpenHouseContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info, MapPin } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -28,6 +28,13 @@ const AdminDashboard = () => {
     updateAgentStatus, 
     adminUpdateAgent, 
     adminChangeAgentEmail, 
+    adminUpdateAgentRoleAndMarket,
+    getAgentMarket,
+    getAgentMarketLabel,
+    getAgentRoleLabel,
+    isAgentInMarket,
+    isAgentTexas,
+    isAgentOutOfMarket,
     deleteAgent, 
     currentAgentData,
     awardAgentXp,
@@ -272,6 +279,11 @@ const AdminDashboard = () => {
   const [editAgentPhone, setEditAgentPhone] = useState('');
   const [editAgentAltPhone, setEditAgentAltPhone] = useState('');
   const [editAgentAddress, setEditAgentAddress] = useState('');
+  const [editAgentMarket, setEditAgentMarket] = useState('el_paso');
+  const [editAgentCity, setEditAgentCity] = useState('El Paso');
+  const [editAgentState, setEditAgentState] = useState('TX');
+  const [editAgentStatus, setEditAgentStatus] = useState('onboarding');
+  const [editAgentTeamSubrole, setEditAgentTeamSubrole] = useState('team_agent');
   const [editAgentLicense, setEditAgentLicense] = useState('');
   const [editAgentEmergencyName, setEditAgentEmergencyName] = useState('');
   const [editAgentEmergencyPhone, setEditAgentEmergencyPhone] = useState('');
@@ -293,26 +305,31 @@ const AdminDashboard = () => {
     setIsSavingAgentEdit(true);
     setEditAgentError('');
 
+    const profileUpdates = {
+      phone: editAgentPhone,
+      altPhone: editAgentAltPhone,
+      address: editAgentAddress,
+      market: editAgentMarket,
+      city: editAgentCity,
+      state: editAgentState,
+      team_subrole: editAgentTeamSubrole,
+      licenseNumber: editAgentLicense,
+      emergencyName: editAgentEmergencyName,
+      emergencyPhone: editAgentEmergencyPhone
+    };
+
     try {
       if (cleanNewEmail !== cleanOldEmail) {
-        await adminChangeAgentEmail(cleanOldEmail, cleanNewEmail, {
-          phone: editAgentPhone,
-          altPhone: editAgentAltPhone,
-          address: editAgentAddress,
-          licenseNumber: editAgentLicense,
-          emergencyName: editAgentEmergencyName,
-          emergencyPhone: editAgentEmergencyPhone
-        }, editAgentName);
+        await adminChangeAgentEmail(cleanOldEmail, cleanNewEmail, profileUpdates, editAgentName);
+        if (editAgentStatus) {
+          await updateAgentStatus(cleanNewEmail, editAgentStatus);
+        }
         setActionSuccessMsg(`Successfully updated profile and changed login email to ${cleanNewEmail}`);
       } else {
-        await adminUpdateAgent(editingAgent.id, editAgentName, {
-          phone: editAgentPhone,
-          altPhone: editAgentAltPhone,
-          address: editAgentAddress,
-          licenseNumber: editAgentLicense,
-          emergencyName: editAgentEmergencyName,
-          emergencyPhone: editAgentEmergencyPhone
-        });
+        await adminUpdateAgent(editingAgent.id, editAgentName, profileUpdates);
+        if (editAgentStatus && editAgentStatus !== editingAgent.status) {
+          await updateAgentStatus(editingAgent.id, editAgentStatus);
+        }
         setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
       }
       setEditingAgent(null);
@@ -433,11 +450,14 @@ const AdminDashboard = () => {
   const [adminReply, setAdminReply] = useState('');
 
   // LinqApp SMS Broadcast State
-  const [smsTargetType, setSmsTargetType] = useState('group'); // 'individual' | 'group' | 'all'
+  const [smsTargetType, setSmsTargetType] = useState('group'); // 'group' | 'market' | 'matrix' | 'all' | 'individual'
   const [smsSelectedAgent, setSmsSelectedAgent] = useState(null);
   const [smsCustomPhone, setSmsCustomPhone] = useState('');
   const [smsCustomName, setSmsCustomName] = useState('');
-  const [smsSelectedGroup, setSmsSelectedGroup] = useState('onboarding'); // 'onboarding' | 'flex_agent' | 'team_agent' | 'guest' | 'admin'
+  const [smsSelectedGroup, setSmsSelectedGroup] = useState('team_agent'); // 'team_agent' | 'showing_partner' | 'flex_agent' | 'onboarding' | 'guest' | 'admin' | 'team_all'
+  const [smsSelectedMarket, setSmsSelectedMarket] = useState('el_paso'); // 'el_paso' | 'texas_all' | 'texas_other' | 'out_of_market' | 'out_of_state'
+  const [smsMatrixRole, setSmsMatrixRole] = useState('all'); // 'all' | 'team_agent' | 'showing_partner' | 'flex_agent' | 'onboarding' | 'guest' | 'admin'
+  const [smsMatrixMarket, setSmsMatrixMarket] = useState('el_paso'); // 'all' | 'el_paso' | 'texas_all' | 'texas_other' | 'out_of_market' | 'out_of_state'
   const [smsMessage, setSmsMessage] = useState('');
   const [smsSending, setSmsSending] = useState(false);
   const [smsResult, setSmsResult] = useState(null);
@@ -451,6 +471,10 @@ const AdminDashboard = () => {
           id: smsSelectedAgent.id,
           name: smsSelectedAgent.name || smsSelectedAgent.id,
           phone: smsSelectedAgent.profile?.phone || smsSelectedAgent.phone || '',
+          role: getAgentRoleLabel(smsSelectedAgent),
+          market: getAgentMarketLabel(smsSelectedAgent),
+          city: smsSelectedAgent.profile?.city || '',
+          state: smsSelectedAgent.profile?.state || '',
           group: smsSelectedAgent.status || 'Agent'
         }];
       }
@@ -459,6 +483,10 @@ const AdminDashboard = () => {
           id: 'custom',
           name: smsCustomName.trim() || 'Custom Contact',
           phone: smsCustomPhone.trim(),
+          role: 'Contact',
+          market: 'Custom',
+          city: '',
+          state: '',
           group: 'Custom'
         }];
       }
@@ -468,9 +496,12 @@ const AdminDashboard = () => {
     if (smsTargetType === 'group') {
       return (agents || []).filter(a => {
         const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+        const subrole = a.profile?.team_subrole || 'team_agent';
         if (smsSelectedGroup === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
         if (smsSelectedGroup === 'flex_agent') return s === 'flex_agent';
-        if (smsSelectedGroup === 'team_agent') return s === 'team_agent';
+        if (smsSelectedGroup === 'team_agent') return s === 'team_agent' && subrole !== 'showing_partner';
+        if (smsSelectedGroup === 'showing_partner') return s === 'team_agent' && subrole === 'showing_partner';
+        if (smsSelectedGroup === 'team_all') return s === 'team_agent';
         if (smsSelectedGroup === 'guest') return s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest';
         if (smsSelectedGroup === 'onboarding') return s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest');
         return false;
@@ -478,7 +509,69 @@ const AdminDashboard = () => {
         id: a.id,
         name: a.name || a.id,
         phone: a.profile?.phone || a.phone || '',
-        group: smsSelectedGroup
+        role: getAgentRoleLabel(a),
+        market: getAgentMarketLabel(a),
+        city: a.profile?.city || '',
+        state: a.profile?.state || '',
+        group: getAgentRoleLabel(a)
+      }));
+    }
+
+    if (smsTargetType === 'market') {
+      return (agents || []).filter(a => {
+        const market = getAgentMarket(a);
+        if (smsSelectedMarket === 'el_paso') return market === 'el_paso';
+        if (smsSelectedMarket === 'texas_all') return market === 'el_paso' || market === 'texas_other';
+        if (smsSelectedMarket === 'texas_other') return market === 'texas_other';
+        if (smsSelectedMarket === 'out_of_market') return market === 'texas_other' || market === 'out_of_state';
+        if (smsSelectedMarket === 'out_of_state') return market === 'out_of_state';
+        return true;
+      }).map(a => ({
+        id: a.id,
+        name: a.name || a.id,
+        phone: a.profile?.phone || a.phone || '',
+        role: getAgentRoleLabel(a),
+        market: getAgentMarketLabel(a),
+        city: a.profile?.city || '',
+        state: a.profile?.state || '',
+        group: getAgentMarketLabel(a)
+      }));
+    }
+
+    if (smsTargetType === 'matrix') {
+      return (agents || []).filter(a => {
+        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+        const subrole = a.profile?.team_subrole || 'team_agent';
+        const market = getAgentMarket(a);
+
+        // Role check
+        let roleMatch = true;
+        if (smsMatrixRole === 'team_agent') roleMatch = (s === 'team_agent' && subrole !== 'showing_partner');
+        else if (smsMatrixRole === 'showing_partner') roleMatch = (s === 'team_agent' && subrole === 'showing_partner');
+        else if (smsMatrixRole === 'team_all') roleMatch = (s === 'team_agent');
+        else if (smsMatrixRole === 'flex_agent') roleMatch = (s === 'flex_agent');
+        else if (smsMatrixRole === 'onboarding') roleMatch = (s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest'));
+        else if (smsMatrixRole === 'guest') roleMatch = (s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest');
+        else if (smsMatrixRole === 'admin') roleMatch = (s === 'admin' || a.profile?.role === 'Administrator');
+
+        // Market check
+        let marketMatch = true;
+        if (smsMatrixMarket === 'el_paso') marketMatch = (market === 'el_paso');
+        else if (smsMatrixMarket === 'texas_all') marketMatch = (market === 'el_paso' || market === 'texas_other');
+        else if (smsMatrixMarket === 'texas_other') marketMatch = (market === 'texas_other');
+        else if (smsMatrixMarket === 'out_of_market') marketMatch = (market === 'texas_other' || market === 'out_of_state');
+        else if (smsMatrixMarket === 'out_of_state') marketMatch = (market === 'out_of_state');
+
+        return roleMatch && marketMatch;
+      }).map(a => ({
+        id: a.id,
+        name: a.name || a.id,
+        phone: a.profile?.phone || a.phone || '',
+        role: getAgentRoleLabel(a),
+        market: getAgentMarketLabel(a),
+        city: a.profile?.city || '',
+        state: a.profile?.state || '',
+        group: `${getAgentRoleLabel(a)} (${getAgentMarketLabel(a)})`
       }));
     }
 
@@ -487,6 +580,10 @@ const AdminDashboard = () => {
         id: a.id,
         name: a.name || a.id,
         phone: a.profile?.phone || a.phone || '',
+        role: getAgentRoleLabel(a),
+        market: getAgentMarketLabel(a),
+        city: a.profile?.city || '',
+        state: a.profile?.state || '',
         group: a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'agent')
       }));
     }
@@ -511,6 +608,8 @@ const AdminDashboard = () => {
 
     const targetLabel = smsTargetType === 'all' ? 'the ENTIRE Directory'
       : smsTargetType === 'group' ? `all ${smsSelectedGroup.replace('_', ' ')} members`
+      : smsTargetType === 'market' ? `all ${smsSelectedMarket.replace('_', ' ')} market agents`
+      : smsTargetType === 'matrix' ? `segmented audience (${smsMatrixRole} in ${smsMatrixMarket})`
       : (validRecipients[0].name || validRecipients[0].phone);
 
     if (!window.confirm(`Are you sure you want to send this SMS broadcast via LinqApp to ${validRecipients.length} recipient(s) (${targetLabel})?`)) {
@@ -527,7 +626,7 @@ const AdminDashboard = () => {
         body: JSON.stringify({
           recipients: validRecipients,
           message: smsMessage,
-          groupName: smsTargetType === 'all' ? 'Entire Directory' : smsTargetType === 'group' ? smsSelectedGroup : 'Individual',
+          groupName: smsTargetType === 'all' ? 'Entire Directory' : smsTargetType === 'group' ? smsSelectedGroup : smsTargetType === 'market' ? smsSelectedMarket : 'Segmented Broadcast',
           senderName: userName
         })
       });
@@ -561,6 +660,10 @@ const AdminDashboard = () => {
       setSmsSending(false);
     }
   };
+
+  // Directory Filter State
+  const [directoryMarketFilter, setDirectoryMarketFilter] = useState('all'); // 'all' | 'el_paso' | 'texas_all' | 'texas_other' | 'out_of_market'
+  const [directoryRoleFilter, setDirectoryRoleFilter] = useState('all'); // 'all' | 'team_agent' | 'showing_partner' | 'flex_agent' | 'onboarding' | 'guest' | 'admin'
 
   // Calendar Filter State
   const [eventFilterMonth, setEventFilterMonth] = useState(new Date().getMonth().toString());
@@ -1135,26 +1238,75 @@ const AdminDashboard = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
               <div>
                 <h2 className="text-lg m-0" style={{ color: 'var(--color-dark-navy)', fontWeight: 700 }}>Agent Directory & Roles</h2>
-                <p className="text-muted text-sm" style={{ margin: '0.2rem 0 0 0' }}>Alphabetically sorted roster. Graduate agents to specialized dashboards.</p>
+                <p className="text-muted text-sm" style={{ margin: '0.2rem 0 0 0' }}>Classify agents by market, segment showing partners, and manage team permissions.</p>
               </div>
 
-              {/* Agent Search Bar */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexGrow: 1, maxWidth: '440px', minWidth: '260px' }}>
-                <div style={{ position: 'relative', width: '100%' }}>
+              {/* Filter and Search Bar Container */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', flexGrow: 1, justifyContent: 'flex-end' }}>
+                {/* Market Filter */}
+                <select
+                  value={directoryMarketFilter}
+                  onChange={(e) => setDirectoryMarketFilter(e.target.value)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: directoryMarketFilter !== 'all' ? 'rgba(0, 161, 224, 0.08)' : 'var(--color-bg-secondary, #f8fafc)',
+                    color: directoryMarketFilter !== 'all' ? 'var(--color-primary)' : 'var(--color-dark-navy)',
+                    fontWeight: directoryMarketFilter !== 'all' ? '700' : '500',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="all">🌐 All Markets</option>
+                  <option value="el_paso">📍 El Paso (In-Market)</option>
+                  <option value="texas_all">🤠 Texas (All TX)</option>
+                  <option value="texas_other">🚗 Texas (Other TX)</option>
+                  <option value="out_of_market">✈️ Out of Market (All)</option>
+                  <option value="out_of_state">🗺️ Out of State</option>
+                </select>
+
+                {/* Role Filter */}
+                <select
+                  value={directoryRoleFilter}
+                  onChange={(e) => setDirectoryRoleFilter(e.target.value)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: directoryRoleFilter !== 'all' ? 'rgba(0, 161, 224, 0.08)' : 'var(--color-bg-secondary, #f8fafc)',
+                    color: directoryRoleFilter !== 'all' ? 'var(--color-primary)' : 'var(--color-dark-navy)',
+                    fontWeight: directoryRoleFilter !== 'all' ? '700' : '500',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="all">👥 All Roles</option>
+                  <option value="team_agent">⭐ Team Agents (Full)</option>
+                  <option value="showing_partner">🤝 Showing Partners</option>
+                  <option value="team_all">🌟 All Team Agents & Partners</option>
+                  <option value="flex_agent">⚡ Flex Agents</option>
+                  <option value="onboarding">🚀 Onboarding</option>
+                  <option value="guest">🎓 Guests</option>
+                  <option value="admin">🛡️ Admins</option>
+                </select>
+
+                {/* Agent Search Bar */}
+                <div style={{ position: 'relative', minWidth: '220px', maxWidth: '320px', flexGrow: 1 }}>
                   <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
                   <input
                     type="text"
-                    placeholder="Search agents by name, email, phone, role..."
+                    placeholder="Search name, phone, city..."
                     value={agentSearchQuery}
                     onChange={(e) => setAgentSearchQuery(e.target.value)}
                     style={{
                       width: '100%',
-                      padding: '0.55rem 2.2rem 0.55rem 2.3rem',
+                      padding: '0.5rem 2rem 0.5rem 2.2rem',
                       borderRadius: '8px',
                       border: '1px solid var(--color-border)',
                       backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
                       color: 'var(--color-dark-navy)',
-                      fontSize: '0.88rem',
+                      fontSize: '0.85rem',
                       outline: 'none',
                       boxSizing: 'border-box'
                     }}
@@ -1182,20 +1334,6 @@ const AdminDashboard = () => {
                     </button>
                   )}
                 </div>
-                {agentSearchQuery && (
-                  <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', fontWeight: 600 }}>
-                    {agents.filter(a => {
-                      const q = agentSearchQuery.toLowerCase().trim();
-                      return (
-                        (a.name || '').toLowerCase().includes(q) ||
-                        (a.id || '').toLowerCase().includes(q) ||
-                        (a.profile?.phone || '').includes(q) ||
-                        (a.profile?.role || '').toLowerCase().includes(q) ||
-                        (a.status || '').toLowerCase().includes(q)
-                      );
-                    }).length} found
-                  </span>
-                )}
               </div>
             </div>
 
@@ -1203,8 +1341,8 @@ const AdminDashboard = () => {
               <table style={styles.roleTable}>
                 <thead>
                   <tr>
-                    <th style={styles.roleTh}>Agent Name</th>
-                    <th style={styles.roleTh}>Email</th>
+                    <th style={styles.roleTh}>Agent Name & Market</th>
+                    <th style={styles.roleTh}>Email / Contact</th>
                     <th style={styles.roleTh}>Current Role</th>
                     <th style={styles.roleTh}>XP</th>
                     <th style={styles.roleTh}>Actions</th>
@@ -1216,11 +1354,14 @@ const AdminDashboard = () => {
                     const groupTitle = groupKey === 'admin' ? 'Administrators' 
                       : groupKey === 'onboarding' ? 'Onboarding Agents' 
                       : groupKey === 'flex_agent' ? 'Flex Agents' 
-                      : groupKey === 'team_agent' ? 'Team Agents' 
+                      : groupKey === 'team_agent' ? 'Team Agents & Showing Partners' 
                       : 'Guest Users';
                     const groupAgents = agents
                       .filter(a => {
                         const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+                        const subrole = a.profile?.team_subrole || 'team_agent';
+                        const market = getAgentMarket(a);
+
                         const matchesGroup = groupKey === 'admin' ? (s === 'admin' || a.profile?.role === 'Administrator')
                           : groupKey === 'flex_agent' ? s === 'flex_agent'
                           : groupKey === 'team_agent' ? s === 'team_agent'
@@ -1229,6 +1370,22 @@ const AdminDashboard = () => {
                         
                         if (!matchesGroup) return false;
 
+                        // Filter by Market
+                        if (directoryMarketFilter === 'el_paso' && market !== 'el_paso') return false;
+                        if (directoryMarketFilter === 'texas_all' && market !== 'el_paso' && market !== 'texas_other') return false;
+                        if (directoryMarketFilter === 'texas_other' && market !== 'texas_other') return false;
+                        if (directoryMarketFilter === 'out_of_market' && market !== 'texas_other' && market !== 'out_of_state') return false;
+                        if (directoryMarketFilter === 'out_of_state' && market !== 'out_of_state') return false;
+
+                        // Filter by Role / Subrole
+                        if (directoryRoleFilter === 'team_agent' && (s !== 'team_agent' || subrole === 'showing_partner')) return false;
+                        if (directoryRoleFilter === 'showing_partner' && (s !== 'team_agent' || subrole !== 'showing_partner')) return false;
+                        if (directoryRoleFilter === 'team_all' && s !== 'team_agent') return false;
+                        if (directoryRoleFilter === 'flex_agent' && s !== 'flex_agent') return false;
+                        if (directoryRoleFilter === 'onboarding' && (s !== 'onboarding' && (s === 'admin' || s === 'flex_agent' || s === 'team_agent' || s === 'guest'))) return false;
+                        if (directoryRoleFilter === 'guest' && s !== 'guest' && a.role !== 'guest' && a.profile?.role !== 'Guest') return false;
+                        if (directoryRoleFilter === 'admin' && s !== 'admin' && a.profile?.role !== 'Administrator') return false;
+
                         if (!agentSearchQuery.trim()) return true;
                         const q = agentSearchQuery.toLowerCase().trim();
                         return (
@@ -1236,12 +1393,14 @@ const AdminDashboard = () => {
                           (a.id || '').toLowerCase().includes(q) ||
                           (a.profile?.phone || '').includes(q) ||
                           (a.profile?.role || '').toLowerCase().includes(q) ||
+                          (a.profile?.city || '').toLowerCase().includes(q) ||
+                          (a.profile?.state || '').toLowerCase().includes(q) ||
                           (a.status || '').toLowerCase().includes(q)
                         );
                       })
                       .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
                     
-                    const isGroupExpanded = expandedAgentGroups[groupKey] || (agentSearchQuery.trim().length > 0 && groupAgents.length > 0);
+                    const isGroupExpanded = expandedAgentGroups[groupKey] || (agentSearchQuery.trim().length > 0 && groupAgents.length > 0) || (directoryMarketFilter !== 'all' && groupAgents.length > 0) || (directoryRoleFilter !== 'all' && groupAgents.length > 0);
 
                     return (
                       <React.Fragment key={groupKey}>
@@ -1256,128 +1415,170 @@ const AdminDashboard = () => {
                         {isGroupExpanded && groupAgents.length === 0 && (
                           <tr>
                             <td colSpan="5" style={{...styles.roleTd, textAlign: 'center', color: 'var(--color-text-muted)'}}>
-                              {agentSearchQuery.trim() ? `No agents in ${groupTitle} matching "${agentSearchQuery}"` : 'No users in this group.'}
+                              {agentSearchQuery.trim() || directoryMarketFilter !== 'all' || directoryRoleFilter !== 'all' ? `No agents in ${groupTitle} matching current filters.` : 'No users in this group.'}
                             </td>
                           </tr>
                         )}
-                        {isGroupExpanded && groupAgents.map(a => (
-                          <tr key={a.id} style={styles.roleTr}>
-                            <td style={styles.roleTd}>
-                              <div style={{display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap'}}>
-                                <div style={{width: '32px', height: '32px', borderRadius: '50%', backgroundColor: a.status === 'guest' || a.role === 'guest' ? '#64748b' : 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold'}}>
-                                  {(a.name || '?').charAt(0)}
+                        {isGroupExpanded && groupAgents.map(a => {
+                          const agentMarket = getAgentMarket(a);
+                          const isShowingPartner = a.status === 'team_agent' && a.profile?.team_subrole === 'showing_partner';
+
+                          return (
+                            <tr key={a.id} style={styles.roleTr}>
+                              <td style={styles.roleTd}>
+                                <div style={{display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap'}}>
+                                  <div style={{width: '32px', height: '32px', borderRadius: '50%', backgroundColor: a.status === 'guest' || a.role === 'guest' ? '#64748b' : 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', flexShrink: 0}}>
+                                    {(a.name || '?').charAt(0)}
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                      <span style={{ fontWeight: '600', color: 'var(--color-dark-navy)' }}>{a.name || 'Unknown Agent'}</span>
+                                      {a.status === 'guest' || a.role === 'guest' ? (
+                                        <span style={{ fontSize: '0.7rem', backgroundColor: '#e2e8f0', color: '#475569', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                                          GUEST
+                                        </span>
+                                      ) : (
+                                        <LevelBadge 
+                                          xp={a.xp || 0} 
+                                          thresholds={gamificationSettings?.levelThresholds} 
+                                          size="xs" 
+                                        />
+                                      )}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                      {/* Market Badge */}
+                                      {agentMarket === 'el_paso' ? (
+                                        <span style={{ fontSize: '0.68rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '4px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                          📍 El Paso
+                                        </span>
+                                      ) : agentMarket === 'texas_other' ? (
+                                        <span style={{ fontSize: '0.68rem', backgroundColor: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: '4px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                          🤠 TX ({a.profile?.city || 'Out of Market'})
+                                        </span>
+                                      ) : (
+                                        <span style={{ fontSize: '0.68rem', backgroundColor: '#f1f5f9', color: '#475569', padding: '1px 5px', borderRadius: '4px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                          ✈️ Out of Market {a.profile?.state ? `(${a.profile.state})` : ''}
+                                        </span>
+                                      )}
+
+                                      {/* Showing Partner Pill */}
+                                      {isShowingPartner && (
+                                        <span style={{ fontSize: '0.68rem', backgroundColor: '#ecfdf5', color: '#047857', padding: '1px 5px', borderRadius: '4px', fontWeight: '700' }}>
+                                          🤝 Showing Partner
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                <span style={{ fontWeight: '500', color: 'var(--color-dark-navy)' }}>{a.name || 'Unknown Agent'}</span>
-                                {a.status === 'guest' || a.role === 'guest' ? (
-                                  <span style={{ fontSize: '0.72rem', backgroundColor: '#e2e8f0', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>
-                                    GUEST
-                                  </span>
-                                ) : (
-                                  <LevelBadge 
-                                    xp={a.xp || 0} 
-                                    thresholds={gamificationSettings?.levelThresholds} 
-                                    size="xs" 
-                                  />
+                              </td>
+                              <td style={styles.roleTd}>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--color-dark-navy)' }}>{a.id}</div>
+                                {a.profile?.phone && (
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>📞 {a.profile.phone}</div>
                                 )}
-                              </div>
-                            </td>
-                            <td style={styles.roleTd}>{a.id}</td>
-                            <td style={styles.roleTd}>
-                              <select 
-                                value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'onboarding')} 
-                                onChange={(e) => updateAgentStatus(a.id, e.target.value)}
-                                style={styles.roleSelect}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <option value="admin">Administrator</option>
-                                <option value="onboarding">Onboarding</option>
-                                <option value="flex_agent">Flex Agent</option>
-                                <option value="team_agent">Team Agent</option>
-                                <option value="guest">Guest User</option>
-                              </select>
-                            </td>
-                            <td style={styles.roleTd}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.08)', padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' }}>
-                                <Star size={12} fill="var(--color-primary)" /> {a.xp || 0} XP
-                              </span>
-                            </td>
-                            <td style={styles.roleTd}>
-                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAwardingAgent(a);
-                                    setAwardXpAmount(50);
-                                    setAwardXpCustom('');
-                                    setAwardXpReason('Hosting Team Open House');
-                                  }}
-                                  className="btn-secondary"
-                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', color: 'var(--color-primary)', borderColor: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.05)' }}
-                                  title="Award custom XP to this agent"
+                              </td>
+                              <td style={styles.roleTd}>
+                                <select 
+                                  value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'onboarding')} 
+                                  onChange={(e) => updateAgentStatus(a.id, e.target.value)}
+                                  style={styles.roleSelect}
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Award size={14} /> Award XP
-                                </button>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingAgent(a);
-                                    setEditAgentName(a.name || '');
-                                    setEditAgentEmail(a.id || a.profile?.email || '');
-                                    setEditAgentError('');
-                                    setEditAgentPhone(a.profile?.phone || '');
-                                    setEditAgentAltPhone(a.profile?.altPhone || '');
-                                    setEditAgentAddress(a.profile?.address || '');
-                                    setEditAgentLicense(a.profile?.licenseNumber || '');
-                                    setEditAgentEmergencyName(a.profile?.emergencyName || '');
-                                    setEditAgentEmergencyPhone(a.profile?.emergencyPhone || '');
-                                  }}
-                                  className="btn-secondary"
-                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
-                                >
-                                  <Edit2 size={14} /> Edit
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); emulateUser(a); }}
-                                  className="btn-secondary"
-                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
-                                >
-                                  <LogIn size={14} /> Log In As
-                                </button>
-                                <button 
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    if (window.confirm(`Send password reset email to ${a.id}?`)) {
-                                      try {
-                                        await resetPasswordForEmail(a.id);
-                                        setActionSuccessMsg(`Password reset link sent to ${a.id}`);
-                                        setTimeout(() => setActionSuccessMsg(''), 4000);
-                                      } catch (err) {
-                                        alert(`Failed to send password reset: ${err.message}`);
+                                  <option value="admin">Administrator</option>
+                                  <option value="onboarding">Onboarding</option>
+                                  <option value="flex_agent">Flex Agent</option>
+                                  <option value="team_agent">Team Agent</option>
+                                  <option value="guest">Guest User</option>
+                                </select>
+                              </td>
+                              <td style={styles.roleTd}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.08)', padding: '3px 8px', borderRadius: '12px', fontSize: '0.8rem' }}>
+                                  <Star size={12} fill="var(--color-primary)" /> {a.xp || 0} XP
+                                </span>
+                              </td>
+                              <td style={styles.roleTd}>
+                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAwardingAgent(a);
+                                      setAwardXpAmount(50);
+                                      setAwardXpCustom('');
+                                      setAwardXpReason('Hosting Team Open House');
+                                    }}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', color: 'var(--color-primary)', borderColor: 'var(--color-primary)', backgroundColor: 'rgba(0, 161, 224, 0.05)' }}
+                                    title="Award custom XP to this agent"
+                                  >
+                                    <Award size={14} /> Award XP
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingAgent(a);
+                                      setEditAgentName(a.name || '');
+                                      setEditAgentEmail(a.id || a.profile?.email || '');
+                                      setEditAgentError('');
+                                      setEditAgentPhone(a.profile?.phone || a.phone || '');
+                                      setEditAgentAltPhone(a.profile?.altPhone || '');
+                                      setEditAgentAddress(a.profile?.address || '');
+                                      setEditAgentMarket(a.profile?.market || getAgentMarket(a));
+                                      setEditAgentCity(a.profile?.city || 'El Paso');
+                                      setEditAgentState(a.profile?.state || 'TX');
+                                      setEditAgentStatus(a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'onboarding'));
+                                      setEditAgentTeamSubrole(a.profile?.team_subrole || 'team_agent');
+                                      setEditAgentLicense(a.profile?.licenseNumber || '');
+                                      setEditAgentEmergencyName(a.profile?.emergencyName || '');
+                                      setEditAgentEmergencyPhone(a.profile?.emergencyPhone || '');
+                                    }}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
+                                  >
+                                    <Edit2 size={14} /> Edit
+                                  </button>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); emulateUser(a); }}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
+                                  >
+                                    <LogIn size={14} /> Log In As
+                                  </button>
+                                  <button 
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      if (window.confirm(`Send password reset email to ${a.id}?`)) {
+                                        try {
+                                          await resetPasswordForEmail(a.id);
+                                          setActionSuccessMsg(`Password reset link sent to ${a.id}`);
+                                          setTimeout(() => setActionSuccessMsg(''), 4000);
+                                        } catch (err) {
+                                          alert(`Failed to send password reset: ${err.message}`);
+                                        }
                                       }
-                                    }
-                                  }}
-                                  className="btn-secondary"
-                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
-                                  title="Send Password Reset Email"
-                                >
-                                  <KeyRound size={14} /> Reset Pass
-                                </button>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (window.confirm(`Are you sure you want to delete ${a.name}? This action cannot be undone.`)) {
-                                      deleteAgent(a.id);
-                                    }
-                                  }}
-                                  className="btn-secondary"
-                                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
-                                >
-                                  <Trash2 size={14} /> Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                    }}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center' }}
+                                    title="Send Password Reset Email"
+                                  >
+                                    <KeyRound size={14} /> Reset Pass
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (window.confirm(`Are you sure you want to delete ${a.name}? This action cannot be undone.`)) {
+                                        deleteAgent(a.id);
+                                      }
+                                    }}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                                  >
+                                    <Trash2 size={14} /> Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </React.Fragment>
                     );
                   })}
@@ -1466,6 +1667,123 @@ const AdminDashboard = () => {
                           style={styles.input} 
                         />
                       </div>
+                    </div>
+
+                    {/* Market & Role Classification */}
+                    <div style={{ backgroundColor: 'var(--color-bg-secondary, #f8fafc)', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--color-border)', marginTop: '0.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.65rem' }}>
+                        <MapPin size={16} color="var(--color-primary)" />
+                        <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--color-dark-navy)' }}>
+                          MARKET & ROLE CLASSIFICATION
+                        </span>
+                      </div>
+
+                      <div style={styles.formGrid}>
+                        <div>
+                          <label style={styles.label}>Portal Role & Dashboard</label>
+                          <select
+                            value={editAgentStatus}
+                            onChange={(e) => setEditAgentStatus(e.target.value)}
+                            style={styles.input}
+                          >
+                            <option value="admin">🛡️ Administrator</option>
+                            <option value="team_agent">⭐ Team Agent</option>
+                            <option value="flex_agent">⚡ Flex Agent</option>
+                            <option value="onboarding">🚀 Onboarding Agent</option>
+                            <option value="guest">🎓 Guest User</option>
+                          </select>
+                        </div>
+
+                        {editAgentStatus === 'team_agent' ? (
+                          <div>
+                            <label style={styles.label}>Team Specialization</label>
+                            <select
+                              value={editAgentTeamSubrole}
+                              onChange={(e) => setEditAgentTeamSubrole(e.target.value)}
+                              style={styles.input}
+                            >
+                              <option value="team_agent">⭐ Full Team Agent</option>
+                              <option value="showing_partner">🤝 Showing Partner</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div>
+                            <label style={styles.label}>Market Territory</label>
+                            <select
+                              value={editAgentMarket}
+                              onChange={(e) => setEditAgentMarket(e.target.value)}
+                              style={styles.input}
+                            >
+                              <option value="el_paso">📍 El Paso (In-Market HQ)</option>
+                              <option value="texas_other">🤠 Texas (Other TX - Out of Market)</option>
+                              <option value="out_of_state">✈️ Out of State (Out of Market)</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      {editAgentStatus === 'team_agent' && (
+                        <div style={{ ...styles.formGrid, marginTop: '0.65rem' }}>
+                          <div>
+                            <label style={styles.label}>Market Territory</label>
+                            <select
+                              value={editAgentMarket}
+                              onChange={(e) => setEditAgentMarket(e.target.value)}
+                              style={styles.input}
+                            >
+                              <option value="el_paso">📍 El Paso (In-Market HQ)</option>
+                              <option value="texas_other">🤠 Texas (Other TX - Out of Market)</option>
+                              <option value="out_of_state">✈️ Out of State (Out of Market)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style={styles.label}>City & State</label>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <input
+                                type="text"
+                                placeholder="City (e.g. El Paso)"
+                                value={editAgentCity}
+                                onChange={(e) => setEditAgentCity(e.target.value)}
+                                style={{ ...styles.input, flex: 2 }}
+                              />
+                              <input
+                                type="text"
+                                placeholder="ST"
+                                maxLength={2}
+                                value={editAgentState}
+                                onChange={(e) => setEditAgentState(e.target.value.toUpperCase())}
+                                style={{ ...styles.input, flex: 1, textTransform: 'uppercase' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {editAgentStatus !== 'team_agent' && (
+                        <div style={{ ...styles.formGrid, marginTop: '0.65rem' }}>
+                          <div>
+                            <label style={styles.label}>City</label>
+                            <input
+                              type="text"
+                              placeholder="City (e.g. Dallas, Austin, El Paso)"
+                              value={editAgentCity}
+                              onChange={(e) => setEditAgentCity(e.target.value)}
+                              style={styles.input}
+                            />
+                          </div>
+                          <div>
+                            <label style={styles.label}>State (2-Letter Code)</label>
+                            <input
+                              type="text"
+                              placeholder="TX"
+                              maxLength={2}
+                              value={editAgentState}
+                              onChange={(e) => setEditAgentState(e.target.value.toUpperCase())}
+                              style={{ ...styles.input, textTransform: 'uppercase' }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div style={styles.formGrid}>
@@ -2749,51 +3067,83 @@ const AdminDashboard = () => {
                     </p>
                   </div>
 
-                  {/* Target Audience Pill Selector */}
-                  <div style={{ display: 'flex', gap: '0.4rem', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                  {/* Target Audience Mode Selector */}
+                  <div style={{ display: 'flex', gap: '0.35rem', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={() => setSmsTargetType('group')}
                       style={{
-                        padding: '0.4rem 0.85rem',
+                        padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
                         border: 'none',
                         backgroundColor: smsTargetType === 'group' ? 'var(--color-dark-navy)' : 'transparent',
                         color: smsTargetType === 'group' ? 'white' : 'var(--color-text-secondary)',
                         fontWeight: '700',
-                        fontSize: '0.82rem',
+                        fontSize: '0.8rem',
                         cursor: 'pointer'
                       }}
                     >
-                      <Users size={14} style={{ display: 'inline', marginRight: '4px' }} /> Group Broadcast
+                      <Users size={13} style={{ display: 'inline', marginRight: '4px' }} /> Role / Group
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSmsTargetType('market')}
+                      style={{
+                        padding: '0.4rem 0.75rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: smsTargetType === 'market' ? 'var(--color-dark-navy)' : 'transparent',
+                        color: smsTargetType === 'market' ? 'white' : 'var(--color-text-secondary)',
+                        fontWeight: '700',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <MapPin size={13} style={{ display: 'inline', marginRight: '4px' }} /> Market / Territory
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSmsTargetType('matrix')}
+                      style={{
+                        padding: '0.4rem 0.75rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: smsTargetType === 'matrix' ? 'var(--color-dark-navy)' : 'transparent',
+                        color: smsTargetType === 'matrix' ? 'white' : 'var(--color-text-secondary)',
+                        fontWeight: '700',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Sparkles size={13} style={{ display: 'inline', marginRight: '4px' }} /> Matrix (Role + Market)
                     </button>
                     <button
                       type="button"
                       onClick={() => setSmsTargetType('all')}
                       style={{
-                        padding: '0.4rem 0.85rem',
+                        padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
                         border: 'none',
                         backgroundColor: smsTargetType === 'all' ? 'var(--color-dark-navy)' : 'transparent',
                         color: smsTargetType === 'all' ? 'white' : 'var(--color-text-secondary)',
                         fontWeight: '700',
-                        fontSize: '0.82rem',
+                        fontSize: '0.8rem',
                         cursor: 'pointer'
                       }}
                     >
-                      <Radio size={14} style={{ display: 'inline', marginRight: '4px' }} /> Entire Directory
+                      <Radio size={13} style={{ display: 'inline', marginRight: '4px' }} /> Entire Directory
                     </button>
                     <button
                       type="button"
                       onClick={() => setSmsTargetType('individual')}
                       style={{
-                        padding: '0.4rem 0.85rem',
+                        padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
                         border: 'none',
                         backgroundColor: smsTargetType === 'individual' ? 'var(--color-dark-navy)' : 'transparent',
                         color: smsTargetType === 'individual' ? 'white' : 'var(--color-text-secondary)',
                         fontWeight: '700',
-                        fontSize: '0.82rem',
+                        fontSize: '0.8rem',
                         cursor: 'pointer'
                       }}
                     >
@@ -2806,41 +3156,141 @@ const AdminDashboard = () => {
                 {smsTargetType === 'group' && (
                   <div style={{ marginBottom: '1.25rem', padding: '1rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: 'var(--color-dark-navy)', marginBottom: '0.5rem' }}>
-                      Select Target Group:
+                      Select Target Role / Specialization:
                     </label>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       {[
-                        { id: 'onboarding', label: 'Onboarding Agents' },
-                        { id: 'flex_agent', label: 'Flex Agents' },
-                        { id: 'team_agent', label: 'Team Agents' },
-                        { id: 'guest', label: 'Guest Users (Classroom)' },
-                        { id: 'admin', label: 'Administrators' }
-                      ].map(g => (
-                        <button
-                          key={g.id}
-                          type="button"
-                          onClick={() => setSmsSelectedGroup(g.id)}
-                          style={{
-                            padding: '0.45rem 0.9rem',
-                            borderRadius: '6px',
-                            border: smsSelectedGroup === g.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
-                            backgroundColor: smsSelectedGroup === g.id ? 'rgba(0, 161, 224, 0.1)' : 'white',
-                            color: smsSelectedGroup === g.id ? 'var(--color-primary)' : 'var(--color-text-primary)',
-                            fontWeight: smsSelectedGroup === g.id ? '800' : '500',
-                            fontSize: '0.85rem',
-                            cursor: 'pointer'
-                          }}
+                        { id: 'team_agent', label: '⭐ Full Team Agents' },
+                        { id: 'showing_partner', label: '🤝 Showing Partners' },
+                        { id: 'team_all', label: '🌟 All Team Agents & Partners' },
+                        { id: 'flex_agent', label: '⚡ Flex Agents' },
+                        { id: 'onboarding', label: '🚀 Onboarding Agents' },
+                        { id: 'guest', label: '🎓 Guest Users (Classroom)' },
+                        { id: 'admin', label: '🛡️ Administrators' }
+                      ].map(g => {
+                        const count = (agents || []).filter(a => {
+                          const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+                          const subrole = a.profile?.team_subrole || 'team_agent';
+                          if (g.id === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
+                          if (g.id === 'flex_agent') return s === 'flex_agent';
+                          if (g.id === 'team_agent') return s === 'team_agent' && subrole !== 'showing_partner';
+                          if (g.id === 'showing_partner') return s === 'team_agent' && subrole === 'showing_partner';
+                          if (g.id === 'team_all') return s === 'team_agent';
+                          if (g.id === 'guest') return s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest';
+                          return s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest');
+                        }).length;
+
+                        return (
+                          <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => setSmsSelectedGroup(g.id)}
+                            style={{
+                              padding: '0.45rem 0.85rem',
+                              borderRadius: '6px',
+                              border: smsSelectedGroup === g.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                              backgroundColor: smsSelectedGroup === g.id ? 'rgba(0, 161, 224, 0.1)' : 'white',
+                              color: smsSelectedGroup === g.id ? 'var(--color-primary)' : 'var(--color-text-primary)',
+                              fontWeight: smsSelectedGroup === g.id ? '800' : '500',
+                              fontSize: '0.82rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {g.label} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {smsTargetType === 'market' && (
+                  <div style={{ marginBottom: '1.25rem', padding: '1rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: 'var(--color-dark-navy)', marginBottom: '0.5rem' }}>
+                      Select Target Market / Territory:
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {[
+                        { id: 'el_paso', label: '📍 El Paso (In-Market HQ)' },
+                        { id: 'texas_all', label: '🤠 Texas (All TX Markets)' },
+                        { id: 'texas_other', label: '🚗 Texas (Non-El Paso Markets)' },
+                        { id: 'out_of_market', label: '✈️ Out of Market (All Non-EP)' },
+                        { id: 'out_of_state', label: '🗺️ Out of State (Non-TX)' }
+                      ].map(m => {
+                        const count = (agents || []).filter(a => {
+                          const market = getAgentMarket(a);
+                          if (m.id === 'el_paso') return market === 'el_paso';
+                          if (m.id === 'texas_all') return market === 'el_paso' || market === 'texas_other';
+                          if (m.id === 'texas_other') return market === 'texas_other';
+                          if (m.id === 'out_of_market') return market === 'texas_other' || market === 'out_of_state';
+                          if (m.id === 'out_of_state') return market === 'out_of_state';
+                          return true;
+                        }).length;
+
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setSmsSelectedMarket(m.id)}
+                            style={{
+                              padding: '0.45rem 0.85rem',
+                              borderRadius: '6px',
+                              border: smsSelectedMarket === m.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                              backgroundColor: smsSelectedMarket === m.id ? 'rgba(0, 161, 224, 0.1)' : 'white',
+                              color: smsSelectedMarket === m.id ? 'var(--color-primary)' : 'var(--color-text-primary)',
+                              fontWeight: smsSelectedMarket === m.id ? '800' : '500',
+                              fontSize: '0.82rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {m.label} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {smsTargetType === 'matrix' && (
+                  <div style={{ marginBottom: '1.25rem', padding: '1rem', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', color: 'var(--color-dark-navy)', marginBottom: '0.35rem' }}>
+                          1. Filter by Role / Specialization:
+                        </label>
+                        <select
+                          value={smsMatrixRole}
+                          onChange={(e) => setSmsMatrixRole(e.target.value)}
+                          style={styles.input}
                         >
-                          {g.label} ({agents.filter(a => {
-                            const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
-                            if (g.id === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
-                            if (g.id === 'flex_agent') return s === 'flex_agent';
-                            if (g.id === 'team_agent') return s === 'team_agent';
-                            if (g.id === 'guest') return s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest';
-                            return s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest');
-                          }).length})
-                        </button>
-                      ))}
+                          <option value="all">👥 All Roles</option>
+                          <option value="team_agent">⭐ Full Team Agents</option>
+                          <option value="showing_partner">🤝 Showing Partners</option>
+                          <option value="team_all">🌟 All Team Agents & Partners</option>
+                          <option value="flex_agent">⚡ Flex Agents</option>
+                          <option value="onboarding">🚀 Onboarding Agents</option>
+                          <option value="guest">🎓 Guest Users</option>
+                          <option value="admin">🛡️ Administrators</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', color: 'var(--color-dark-navy)', marginBottom: '0.35rem' }}>
+                          2. Filter by Market / Territory:
+                        </label>
+                        <select
+                          value={smsMatrixMarket}
+                          onChange={(e) => setSmsMatrixMarket(e.target.value)}
+                          style={styles.input}
+                        >
+                          <option value="all">🌐 All Markets</option>
+                          <option value="el_paso">📍 El Paso (In-Market HQ)</option>
+                          <option value="texas_all">🤠 Texas (All TX)</option>
+                          <option value="texas_other">🚗 Texas (Non-El Paso Markets)</option>
+                          <option value="out_of_market">✈️ Out of Market (All Non-EP)</option>
+                          <option value="out_of_state">🗺️ Out of State</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2958,18 +3408,30 @@ const AdminDashboard = () => {
 
                       {/* Expandable Recipient List Drawer */}
                       {showRecipientsDrawer && (
-                        <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: '8px', backgroundColor: '#fafafa', padding: '0.5rem' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                        <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: '8px', backgroundColor: '#fafafa', padding: '0.5rem' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.5rem' }}>
                             {targetRecipients.map((r, idx) => {
                               const hasPhone = r.phone && r.phone.replace(/\D/g, '').length >= 10;
                               return (
-                                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.35rem 0.6rem', backgroundColor: 'white', borderRadius: '6px', border: hasPhone ? '1px solid #e2e8f0' : '1px dashed #fca5a5', fontSize: '0.78rem' }}>
-                                  <span style={{ fontWeight: '600', color: 'var(--color-dark-navy)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                    {r.name}
-                                  </span>
-                                  <span style={{ color: hasPhone ? 'var(--color-text-muted)' : '#ef4444', fontWeight: hasPhone ? '400' : '700' }}>
-                                    {hasPhone ? r.phone : 'No Phone'}
-                                  </span>
+                                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '0.4rem 0.6rem', backgroundColor: 'white', borderRadius: '6px', border: hasPhone ? '1px solid #e2e8f0' : '1px dashed #fca5a5', fontSize: '0.78rem' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: '600', color: 'var(--color-dark-navy)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                      {r.name}
+                                    </span>
+                                    <span style={{ color: hasPhone ? 'var(--color-text-muted)' : '#ef4444', fontWeight: hasPhone ? '400' : '700', fontSize: '0.74rem' }}>
+                                      {hasPhone ? r.phone : 'No Phone'}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.68rem', backgroundColor: '#f1f5f9', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>
+                                      {r.role || r.group}
+                                    </span>
+                                    {r.market && (
+                                      <span style={{ fontSize: '0.68rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '3px' }}>
+                                        📍 {r.market}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
@@ -2990,7 +3452,8 @@ const AdminDashboard = () => {
                       {[
                         { label: '🎓 New Training', text: 'Hey {firstName}! 🎓 A new training session has just been released in the Syndicate Classroom. Watch it here: https://agentsyndicate.com/classroom' },
                         { label: '🏡 Open House Alert', text: 'Team Alert! 🏡 New open house opportunities are now open for claiming on the portal: https://agentsyndicate.com/open-houses' },
-                        { label: '🚀 Mastermind Call', text: 'Hey {firstName}! 🚀 Reminder that our team mastermind call begins shortly. Check the training feed and calendar for Zoom details!' },
+                        { label: '🤝 Showing Partner Alert', text: 'Hey {firstName}! 🤝 New showing assistance opportunities are open in {market}. Check the open house board to claim yours: https://agentsyndicate.com/open-houses' },
+                        { label: '📍 Market Mastermind', text: 'Hey {firstName}! 🚀 Reminder that our {market} mastermind call begins shortly. Check the training feed and calendar for Zoom details!' },
                         { label: '👋 Guest Welcome', text: 'Welcome to eXp Syndicate {firstName}! 🌟 Your guest account is ready. Access our designated training classes here: https://agentsyndicate.com/classroom' }
                       ].map((tpl, idx) => (
                         <button
@@ -3019,7 +3482,7 @@ const AdminDashboard = () => {
                     <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--color-text-secondary)' }}>
                       Merge Tags:
                     </span>
-                    {['{firstName}', '{name}', '{group}', '{team}'].map(tag => (
+                    {['{firstName}', '{name}', '{role}', '{market}', '{city}', '{state}', '{group}', '{team}'].map(tag => (
                       <button
                         key={tag}
                         type="button"
@@ -3030,12 +3493,10 @@ const AdminDashboard = () => {
                           border: '1px solid #cbd5e1',
                           backgroundColor: 'white',
                           fontSize: '0.75rem',
-                          fontFamily: 'monospace',
+                          fontWeight: '600',
                           color: 'var(--color-primary)',
-                          fontWeight: '700',
                           cursor: 'pointer'
                         }}
-                        title={`Insert ${tag}`}
                       >
                         {tag}
                       </button>
