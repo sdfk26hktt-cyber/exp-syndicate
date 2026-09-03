@@ -12,20 +12,46 @@ import {
   Eye,
   EyeOff,
   Sparkles,
-  Play
+  Play,
+  Copy,
+  Megaphone,
+  Search,
+  FileText,
+  CheckCircle2,
+  Layers,
+  BookOpen,
+  Send,
+  Share2,
+  Info,
+  Clock,
+  CheckSquare,
+  Paperclip
 } from 'lucide-react';
 import { useAgent } from '../../context/AgentContext';
+import { useCommunity } from '../../context/CommunityContext';
 import LevelBadge from '../Gamification/LevelBadge';
 import { parseEmbedMedia, extractIframeSrc } from '../../utils/mediaEmbed';
 
 const ClassroomManager = () => {
   const { courses, updateGlobalCourses, gamificationSettings } = useAgent();
+  const { addPost } = useCommunity();
   const [localCourses, setLocalCourses] = useState(courses || []);
   const [selectedCourseIndex, setSelectedCourseIndex] = useState(0);
   const [expandedModuleIndex, setExpandedModuleIndex] = useState(0);
   const [previewLessonId, setPreviewLessonId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+
+  // Lesson Copy / Library States
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyTargetModuleIdx, setCopyTargetModuleIdx] = useState(0);
+  const [copySearchQuery, setCopySearchQuery] = useState('');
+  const [copySelectedCourseFilter, setCopySelectedCourseFilter] = useState('all');
+
+  // Training Feed Announcement States
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [announcementData, setAnnouncementData] = useState(null);
+  const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
 
   // Keep localCourses in sync if courses load asynchronously from cloud
   useEffect(() => {
@@ -209,6 +235,164 @@ const ClassroomManager = () => {
     setLocalCourses(updated);
   };
 
+  // Duplicate Lesson In-Place
+  const handleDuplicateLesson = (mIdx, lIdx) => {
+    const updated = [...localCourses];
+    const origLesson = updated[selectedCourseIndex].modules[mIdx].lessons[lIdx];
+    const clonedLesson = {
+      ...origLesson,
+      id: `les-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      title: `${origLesson.title || 'Lesson'} (Copy)`,
+      steps: (origLesson.steps || []).map(s => ({ ...s })),
+      resources: (origLesson.resources || []).map(r => ({ ...r }))
+    };
+    updated[selectedCourseIndex].modules[mIdx].lessons.splice(lIdx + 1, 0, clonedLesson);
+    setLocalCourses(updated);
+    setToastMessage(`📋 Lesson duplicated: "${clonedLesson.title}"`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Open Copy Lesson From Library Modal
+  const openCopyLessonModal = (mIdx) => {
+    setCopyTargetModuleIdx(mIdx);
+    setCopySearchQuery('');
+    setCopySelectedCourseFilter('all');
+    setCopyModalOpen(true);
+  };
+
+  // Handle Copy Lesson From Library
+  const handleCopyFromLibrary = (sourceLesson) => {
+    const updated = [...localCourses];
+    const clonedLesson = {
+      ...sourceLesson,
+      id: `les-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      title: `${sourceLesson.title || 'Lesson'} (Copy)`,
+      steps: (sourceLesson.steps || []).map(s => ({ ...s })),
+      resources: (sourceLesson.resources || []).map(r => ({ ...r }))
+    };
+    if (!updated[selectedCourseIndex].modules[copyTargetModuleIdx].lessons) {
+      updated[selectedCourseIndex].modules[copyTargetModuleIdx].lessons = [];
+    }
+    updated[selectedCourseIndex].modules[copyTargetModuleIdx].lessons.push(clonedLesson);
+    setLocalCourses(updated);
+    setCopyModalOpen(false);
+    setToastMessage(`✅ Copied "${sourceLesson.title}" into Module ${copyTargetModuleIdx + 1}!`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Open Training Feed Announcement for Course
+  const handleOpenCourseAnnouncement = (course) => {
+    const totalModules = (course.modules || []).length;
+    let totalLessons = 0;
+    let totalXp = 0;
+    (course.modules || []).forEach(m => {
+      (m.lessons || []).forEach(l => {
+        totalLessons += 1;
+        totalXp += (l.xp || 25);
+      });
+    });
+    const unlockLvl = course.unlockLevel || 1;
+    const category = course.category || 'General Training';
+
+    const text = `### 🎓 New Classroom Course: **${course.title}**\n\n${course.description || 'A comprehensive new training series is now live in the syndicate classroom.'}\n\n**Course Curriculum Overview:**\n- 📚 **Structure**: ${totalModules} Modules • ${totalLessons} Lessons\n- ⚡ **Reward**: +${totalXp} XP upon completion\n- ⏳ **Estimated Time**: ${course.estimatedHours || '2 Hours'}\n- 🔓 **Requirement**: Level ${unlockLvl}+\n\n👉 [**Start Course in Classroom →**](/classroom/${course.id})`;
+
+    setAnnouncementData({
+      type: 'course',
+      badge: 'Course Announcement',
+      title: `🎓 New Course: ${course.title}`,
+      text,
+      media: course.coverImage || '',
+      audio: '',
+      presentation: '',
+      tags: ['Classroom', 'New Course', category],
+      attached_resources: []
+    });
+    setAnnouncementModalOpen(true);
+  };
+
+  // Open Training Feed Announcement for Module
+  const handleOpenModuleAnnouncement = (course, module, mIdx) => {
+    const lessons = module.lessons || [];
+    let totalXp = 0;
+    lessons.forEach(l => {
+      totalXp += (l.xp || 25);
+    });
+    const category = course.category || 'General Training';
+
+    const lessonListText = lessons.length > 0 
+      ? lessons.map((l, i) => `${i + 1}. **${l.title}** (${l.duration || '15 min'}, +${l.xp || 25} XP)`).join('\n')
+      : '*(Lessons coming soon)*';
+
+    const text = `### 📚 New Training Module: **${module.title}**\n*Course: ${course.title} (Module ${mIdx + 1})*\n\n${module.description || 'Master key tactics and conversion workflows with this dedicated training module.'}\n\n**Included Lessons (${lessons.length} lessons • +${totalXp} XP):**\n${lessonListText}\n\n👉 [**Open Module in Classroom →**](/classroom/${course.id})`;
+
+    setAnnouncementData({
+      type: 'module',
+      badge: 'Module Announcement',
+      title: `📚 New Module: ${module.title}`,
+      text,
+      media: course.coverImage || '',
+      audio: '',
+      presentation: '',
+      tags: ['Classroom', 'Training Module', category],
+      attached_resources: []
+    });
+    setAnnouncementModalOpen(true);
+  };
+
+  // Open Training Feed Announcement for Lesson
+  const handleOpenLessonAnnouncement = (course, module, lesson) => {
+    const category = course.category || 'General Training';
+    const stepsCount = (lesson.steps || []).length;
+    const resourcesCount = (lesson.resources || []).length;
+
+    const text = `### ▶️ New Training Lesson: **${lesson.title}**\n*Module: ${module.title} • Course: ${course.title}*\n\n${lesson.description || 'Actionable breakdown and training walkthrough.'}\n\n**Lesson Highlights:**\n- ⏱️ **Duration**: ${lesson.duration || '15 min'}\n- ⚡ **XP Award**: +${lesson.xp || 25} XP\n- ✅ **Action Checklist**: ${stepsCount} actionable steps\n- 📎 **Attached Materials**: ${resourcesCount} downloads/links\n\n👉 [**Start Lesson in Classroom →**](/classroom/${course.id}/${lesson.id})`;
+
+    const attachedResources = (lesson.resources || []).map((r, idx) => ({
+      id: `res-${Date.now()}-${idx}`,
+      title: r.name || 'Lesson Resource',
+      url: r.url || '',
+      type: r.type || 'pdf',
+      category: 'Classroom Resource'
+    })).filter(r => r.url);
+
+    setAnnouncementData({
+      type: 'lesson',
+      badge: 'Lesson Announcement',
+      title: `▶️ New Lesson: ${lesson.title}`,
+      text,
+      media: lesson.videoUrl || course.coverImage || '',
+      audio: '',
+      presentation: '',
+      tags: ['Classroom', 'Training Lesson', category],
+      attached_resources: attachedResources
+    });
+    setAnnouncementModalOpen(true);
+  };
+
+  // Publish Announcement to Community Feed
+  const handlePublishAnnouncement = async () => {
+    if (!announcementData || !announcementData.text.trim()) return;
+    setAnnouncementSubmitting(true);
+    try {
+      await addPost(
+        announcementData.text,
+        announcementData.media || '',
+        announcementData.audio || '',
+        announcementData.presentation || '',
+        announcementData.tags || [],
+        announcementData.attached_resources || []
+      );
+      setAnnouncementModalOpen(false);
+      setToastMessage('📢 Training Announcement published to Community Feed!');
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err) {
+      console.error('Error publishing announcement:', err);
+      alert('Failed to publish announcement: ' + (err.message || err));
+    } finally {
+      setAnnouncementSubmitting(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in" style={styles.container}>
       {/* Toast */}
@@ -300,7 +484,30 @@ const ClassroomManager = () => {
           <div style={styles.editorArea}>
             {/* Course Settings Card */}
             <div style={styles.editorCard}>
-              <h3 style={styles.cardSectionTitle}>Course Details</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <h3 style={{ ...styles.cardSectionTitle, marginBottom: 0 }}>Course Details</h3>
+                <button
+                  type="button"
+                  onClick={() => handleOpenCourseAnnouncement(activeCourse)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    backgroundColor: '#f0fdf4',
+                    color: '#15803d',
+                    border: '1px solid #bbf7d0',
+                    padding: '0.45rem 0.9rem',
+                    borderRadius: '7px',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Broadcast this Course to the Training Feed"
+                >
+                  <Megaphone size={15} /> Announce Course on Feed
+                </button>
+              </div>
 
               <div style={styles.formGrid}>
                 <div style={{ gridColumn: 'span 2' }}>
@@ -405,13 +612,36 @@ const ClassroomManager = () => {
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenModuleAnnouncement(activeCourse, module, mIdx);
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            backgroundColor: '#f0fdf4',
+                            color: '#15803d',
+                            border: '1px solid #bbf7d0',
+                            padding: '0.3rem 0.6rem',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                          title="Announce this module on Training Feed"
+                        >
+                          <Megaphone size={13} /> Announce Module
+                        </button>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteModule(mIdx);
                           }}
-                          style={{ color: 'var(--color-danger)', background: 'none', border: 'none', cursor: 'pointer' }}
+                          style={{ color: 'var(--color-danger)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
                           title="Delete Module"
                         >
                           <Trash2 size={16} />
@@ -434,13 +664,35 @@ const ClassroomManager = () => {
                           />
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                           <span style={{ fontWeight: '700', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-                            LESSONS IN THIS MODULE
+                            LESSONS IN THIS MODULE ({(module.lessons || []).length})
                           </span>
-                          <button onClick={() => handleAddLesson(mIdx)} style={styles.addLessonBtn}>
-                            <Plus size={14} /> Add Lesson
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button 
+                              type="button" 
+                              onClick={() => openCopyLessonModal(mIdx)} 
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                backgroundColor: '#f8fafc',
+                                color: 'var(--color-dark-navy)',
+                                border: '1px solid var(--color-border)',
+                                padding: '0.35rem 0.75rem',
+                                borderRadius: '6px',
+                                fontSize: '0.8rem',
+                                fontWeight: '700',
+                                cursor: 'pointer'
+                              }}
+                              title="Copy or reuse an existing lesson from any course or module"
+                            >
+                              <Copy size={14} /> Copy from Library
+                            </button>
+                            <button onClick={() => handleAddLesson(mIdx)} style={styles.addLessonBtn}>
+                              <Plus size={14} /> Add Lesson
+                            </button>
+                          </div>
                         </div>
 
                         {/* Lessons List inside Module */}
@@ -448,8 +700,8 @@ const ClassroomManager = () => {
                           {(module.lessons || []).map((lesson, lIdx) => (
                             <div key={lesson.id || lIdx} style={styles.lessonEditorCard}>
                               {/* Lesson Header Fields */}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem' }}>
-                                <div style={{ flex: '1 1 300px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                                <div style={{ flex: '1 1 260px' }}>
                                   <label style={styles.label}>Lesson Title</label>
                                   <input
                                     type="text"
@@ -459,7 +711,7 @@ const ClassroomManager = () => {
                                   />
                                 </div>
 
-                                <div style={{ width: '100px' }}>
+                                <div style={{ width: '90px' }}>
                                   <label style={styles.label}>XP Award</label>
                                   <input
                                     type="number"
@@ -469,7 +721,7 @@ const ClassroomManager = () => {
                                   />
                                 </div>
 
-                                <div style={{ width: '100px' }}>
+                                <div style={{ width: '90px' }}>
                                   <label style={styles.label}>Duration</label>
                                   <input
                                     type="text"
@@ -479,13 +731,55 @@ const ClassroomManager = () => {
                                   />
                                 </div>
 
-                                <button 
-                                  onClick={() => handleDeleteLesson(mIdx, lIdx)}
-                                  style={{ color: 'var(--color-danger)', background: 'none', border: 'none', cursor: 'pointer', marginTop: '1.5rem' }}
-                                  title="Delete Lesson"
-                                >
-                                  <X size={18} />
-                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '1.4rem' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDuplicateLesson(mIdx, lIdx)}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      backgroundColor: '#f1f5f9',
+                                      color: 'var(--color-dark-navy)',
+                                      border: '1px solid #cbd5e1',
+                                      padding: '0.35rem 0.55rem',
+                                      borderRadius: '5px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: '700',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Duplicate this lesson in this module"
+                                  >
+                                    <Copy size={13} /> Duplicate
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenLessonAnnouncement(activeCourse, module, lesson)}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      backgroundColor: '#f0fdf4',
+                                      color: '#15803d',
+                                      border: '1px solid #bbf7d0',
+                                      padding: '0.35rem 0.55rem',
+                                      borderRadius: '5px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: '700',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Announce this lesson on the Training Feed"
+                                  >
+                                    <Megaphone size={13} /> Announce
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteLesson(mIdx, lIdx)}
+                                    style={{ color: 'var(--color-danger)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                                    title="Delete Lesson"
+                                  >
+                                    <X size={18} />
+                                  </button>
+                                </div>
                               </div>
 
                               {/* Lesson Media / Presentation / Walkthrough URL */}
@@ -741,6 +1035,284 @@ const ClassroomManager = () => {
           </div>
         )}
       </div>
+
+      {/* Copy Lesson from Library Modal */}
+      {copyModalOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent} className="animate-fade-in">
+            {/* Modal Header */}
+            <div style={styles.modalHeader}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <Copy size={20} color="#38bdf8" />
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'white' }}>
+                    Copy Lesson from Library
+                  </h3>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.825rem', color: 'rgba(255,255,255,0.7)' }}>
+                  Duplicate any lesson from your curriculum catalog into <strong>{activeCourse.title}</strong> (Module {copyTargetModuleIdx + 1})
+                </p>
+              </div>
+              <button 
+                onClick={() => setCopyModalOpen(false)}
+                style={styles.modalCloseBtn}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Controls / Search */}
+            <div style={styles.modalControls}>
+              <div style={styles.searchBox}>
+                <Search size={16} color="var(--color-text-muted)" />
+                <input
+                  type="text"
+                  value={copySearchQuery}
+                  onChange={(e) => setCopySearchQuery(e.target.value)}
+                  placeholder="Search lessons by title, notes, keywords..."
+                  style={styles.searchInput}
+                />
+                {copySearchQuery && (
+                  <button 
+                    onClick={() => setCopySearchQuery('')} 
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  >
+                    <X size={14} color="var(--color-text-muted)" />
+                  </button>
+                )}
+              </div>
+
+              <select
+                value={copySelectedCourseFilter}
+                onChange={(e) => setCopySelectedCourseFilter(e.target.value)}
+                style={styles.courseFilterSelect}
+              >
+                <option value="all">All Courses ({localCourses.length})</option>
+                {localCourses.map(c => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Modal Lessons List */}
+            <div style={styles.modalList}>
+              {(() => {
+                const flatLessons = [];
+                localCourses.forEach(c => {
+                  (c.modules || []).forEach((m, mIdx) => {
+                    (m.lessons || []).forEach(l => {
+                      flatLessons.push({
+                        courseId: c.id,
+                        courseTitle: c.title,
+                        courseCategory: c.category || 'General Training',
+                        moduleId: m.id,
+                        moduleTitle: m.title,
+                        moduleNumber: mIdx + 1,
+                        lesson: l
+                      });
+                    });
+                  });
+                });
+
+                const filtered = flatLessons.filter(item => {
+                  const matchesCourse = copySelectedCourseFilter === 'all' || item.courseId === copySelectedCourseFilter;
+                  const query = copySearchQuery.toLowerCase().trim();
+                  const matchesSearch = !query || 
+                    item.lesson.title?.toLowerCase().includes(query) ||
+                    item.lesson.description?.toLowerCase().includes(query) ||
+                    item.courseTitle?.toLowerCase().includes(query) ||
+                    item.moduleTitle?.toLowerCase().includes(query);
+                  return matchesCourse && matchesSearch;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div style={styles.modalEmpty}>
+                      <BookOpen size={40} color="#94a3b8" />
+                      <h4 style={{ margin: '0.75rem 0 0.25rem', color: 'var(--color-text-primary)' }}>No Lessons Found</h4>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                        Try searching with different terms or select "All Courses".
+                      </p>
+                    </div>
+                  );
+                }
+
+                return filtered.map((item, idx) => {
+                  const mediaInfo = parseEmbedMedia(item.lesson.videoUrl);
+                  return (
+                    <div key={item.lesson.id || idx} style={styles.copyLessonCard}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+                          <span style={styles.courseTagBadge}>{item.courseTitle}</span>
+                          <span style={styles.moduleTagBadge}>M{item.moduleNumber}: {item.moduleTitle}</span>
+                          {mediaInfo.type !== 'empty' && (
+                            <span style={{ fontSize: '0.68rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                              {mediaInfo.badgeLabel}
+                            </span>
+                          )}
+                        </div>
+
+                        <h4 style={{ margin: '0 0 0.35rem', fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                          {item.lesson.title}
+                        </h4>
+
+                        {item.lesson.description && (
+                          <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', color: 'var(--color-text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.4 }}>
+                            {item.lesson.description}
+                          </p>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', fontSize: '0.75rem', color: 'var(--color-text-secondary)', fontWeight: 600 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Clock size={13} color="var(--color-text-muted)" /> {item.lesson.duration || '15 min'}
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#d97706' }}>
+                            <Sparkles size={13} /> +{item.lesson.xp || 25} XP
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <CheckSquare size={13} color="var(--color-text-muted)" /> {(item.lesson.steps || []).length} steps
+                          </span>
+                          {(item.lesson.resources || []).length > 0 && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#10b981' }}>
+                              <Paperclip size={13} /> {(item.lesson.resources || []).length} files
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopyFromLibrary(item.lesson)}
+                        style={styles.copyActionBtn}
+                        title="Copy this lesson into active module"
+                      >
+                        <Copy size={15} /> Copy to Module {copyTargetModuleIdx + 1}
+                      </button>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feed Announcement Modal */}
+      {announcementModalOpen && announcementData && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.modalContent, maxWidth: '720px' }} className="animate-fade-in">
+            {/* Modal Header */}
+            <div style={styles.modalHeader}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <Megaphone size={20} color="#4ade80" />
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'white' }}>
+                    Announce on Training Feed
+                  </h3>
+                  <span style={styles.announcementTypeBadge}>
+                    {announcementData.badge}
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.825rem', color: 'rgba(255,255,255,0.7)' }}>
+                  Broadcast this training update to all agents on the team's live Training & Community Feed.
+                </p>
+              </div>
+              <button 
+                onClick={() => setAnnouncementModalOpen(false)}
+                style={styles.modalCloseBtn}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Announcement Form */}
+            <div style={styles.announcementFormBody}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={styles.label}>Post Body & Markdown Description</label>
+                <textarea
+                  value={announcementData.text}
+                  onChange={(e) => setAnnouncementData({ ...announcementData, text: e.target.value })}
+                  style={{ ...styles.input, minHeight: '160px', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: '1.5' }}
+                  placeholder="Announcement message markdown..."
+                />
+                <span style={{ fontSize: '0.725rem', color: 'var(--color-text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                  💡 Formatted with Markdown. Agents can click links to jump straight into the Classroom player!
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={styles.label}>Attached Video / Media URL (Optional)</label>
+                  <input
+                    type="text"
+                    value={announcementData.media || ''}
+                    onChange={(e) => setAnnouncementData({ ...announcementData, media: e.target.value })}
+                    style={styles.input}
+                    placeholder="YouTube, Loom, Vimeo, or Canva URL..."
+                  />
+                </div>
+
+                <div>
+                  <label style={styles.label}>Tags (Comma-separated)</label>
+                  <input
+                    type="text"
+                    value={Array.isArray(announcementData.tags) ? announcementData.tags.join(', ') : announcementData.tags || ''}
+                    onChange={(e) => setAnnouncementData({ 
+                      ...announcementData, 
+                      tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) 
+                    })}
+                    style={styles.input}
+                    placeholder="Classroom, Training, Conversion..."
+                  />
+                </div>
+              </div>
+
+              {announcementData.attached_resources && announcementData.attached_resources.length > 0 && (
+                <div style={{ backgroundColor: '#f8fafc', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1rem' }}>
+                  <span style={{ fontSize: '0.775rem', fontWeight: 700, color: 'var(--color-dark-navy)', display: 'block', marginBottom: '0.35rem' }}>
+                    📎 {announcementData.attached_resources.length} Downloadable Materials Attached:
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {announcementData.attached_resources.map((r, i) => (
+                      <div key={i} style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <Paperclip size={12} color="#10b981" />
+                        <span style={{ fontWeight: 600 }}>{r.title}</span>
+                        <span style={{ color: 'var(--color-text-muted)' }}>({r.type})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                onClick={() => setAnnouncementModalOpen(false)}
+                style={styles.modalCancelBtn}
+                disabled={announcementSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePublishAnnouncement}
+                style={styles.modalPublishBtn}
+                disabled={announcementSubmitting || !announcementData.text.trim()}
+              >
+                {announcementSubmitting ? (
+                  <>Publishing...</>
+                ) : (
+                  <>
+                    <Send size={16} /> Broadcast to Training Feed
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -972,6 +1544,196 @@ const styles = {
     marginBottom: '0.5rem',
     paddingBottom: '0.5rem',
     borderBottom: '1px dashed #f1f5f9'
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    backdropFilter: 'blur(4px)',
+    zIndex: 1100,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '1rem'
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: '16px',
+    maxWidth: '780px',
+    width: '100%',
+    maxHeight: '88vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+    overflow: 'hidden'
+  },
+  modalHeader: {
+    padding: '1.25rem 1.5rem',
+    background: 'linear-gradient(135deg, #0b192c 0%, #1e3a8a 100%)',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottom: '1px solid rgba(255,255,255,0.1)'
+  },
+  modalCloseBtn: {
+    background: 'rgba(255,255,255,0.1)',
+    border: 'none',
+    color: 'white',
+    cursor: 'pointer',
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'background 0.15s ease'
+  },
+  modalControls: {
+    padding: '1rem 1.5rem',
+    backgroundColor: '#f8fafc',
+    borderBottom: '1px solid var(--color-border)',
+    display: 'flex',
+    gap: '0.75rem',
+    flexWrap: 'wrap'
+  },
+  searchBox: {
+    flex: '1 1 300px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    backgroundColor: 'white',
+    padding: '0.5rem 0.75rem',
+    borderRadius: '8px',
+    border: '1px solid var(--color-border)'
+  },
+  searchInput: {
+    flex: 1,
+    border: 'none',
+    outline: 'none',
+    fontSize: '0.875rem',
+    color: 'var(--color-text-primary)'
+  },
+  courseFilterSelect: {
+    padding: '0.5rem 0.85rem',
+    borderRadius: '8px',
+    border: '1px solid var(--color-border)',
+    backgroundColor: 'white',
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    color: 'var(--color-dark-navy)',
+    outline: 'none',
+    cursor: 'pointer'
+  },
+  modalList: {
+    padding: '1.25rem 1.5rem',
+    overflowY: 'auto',
+    maxHeight: '480px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.875rem'
+  },
+  modalEmpty: {
+    textAlign: 'center',
+    padding: '3rem 1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  copyLessonCard: {
+    backgroundColor: 'white',
+    border: '1px solid var(--color-border)',
+    borderRadius: '10px',
+    padding: '1rem 1.25rem',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '1rem',
+    transition: 'all 0.15s ease',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+  },
+  courseTagBadge: {
+    fontSize: '0.7rem',
+    fontWeight: '700',
+    backgroundColor: '#eff6ff',
+    color: '#1d4ed8',
+    padding: '2px 8px',
+    borderRadius: '4px'
+  },
+  moduleTagBadge: {
+    fontSize: '0.7rem',
+    fontWeight: '600',
+    backgroundColor: '#f1f5f9',
+    color: '#475569',
+    padding: '2px 8px',
+    borderRadius: '4px'
+  },
+  copyActionBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    backgroundColor: 'var(--color-primary)',
+    color: 'white',
+    border: 'none',
+    padding: '0.5rem 0.9rem',
+    borderRadius: '6px',
+    fontSize: '0.8rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    transition: 'transform 0.1s ease'
+  },
+  announcementTypeBadge: {
+    fontSize: '0.7rem',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    backgroundColor: 'rgba(74, 222, 128, 0.2)',
+    color: '#4ade80',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    border: '1px solid rgba(74, 222, 128, 0.3)'
+  },
+  announcementFormBody: {
+    padding: '1.25rem 1.5rem',
+    overflowY: 'auto',
+    maxHeight: '60vh'
+  },
+  modalFooter: {
+    padding: '1rem 1.5rem',
+    backgroundColor: '#f8fafc',
+    borderTop: '1px solid var(--color-border)',
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: '0.75rem'
+  },
+  modalCancelBtn: {
+    backgroundColor: 'transparent',
+    border: '1px solid var(--color-border)',
+    color: 'var(--color-text-secondary)',
+    padding: '0.55rem 1.1rem',
+    borderRadius: '8px',
+    fontWeight: '600',
+    fontSize: '0.875rem',
+    cursor: 'pointer'
+  },
+  modalPublishBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.45rem',
+    backgroundColor: '#16a34a',
+    color: 'white',
+    border: 'none',
+    padding: '0.55rem 1.25rem',
+    borderRadius: '8px',
+    fontWeight: '700',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)'
   }
 };
 

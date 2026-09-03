@@ -223,7 +223,40 @@ const CommunityFeed = () => {
                     <div style={styles.postContent}>
                     {post.content && (
                       <div className="markdown-body" style={{ marginBottom: (post.videoUrl || post.audioUrl || post.presentationUrl) ? '1rem' : 0 }}>
-                        <ReactMarkdown>{post.content}</ReactMarkdown>
+                        <ReactMarkdown
+                          components={{
+                            a: ({ node, href, children, ...props }) => {
+                              if (href && href.startsWith('/')) {
+                                return (
+                                  <a
+                                    href={href}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      navigate(href);
+                                    }}
+                                    style={{ color: '#0284c7', fontWeight: '700', textDecoration: 'underline', cursor: 'pointer' }}
+                                    {...props}
+                                  >
+                                    {children}
+                                  </a>
+                                );
+                              }
+                              return (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#0284c7', fontWeight: '600' }}
+                                  {...props}
+                                >
+                                  {children}
+                                </a>
+                              );
+                            }
+                          }}
+                        >
+                          {post.content}
+                        </ReactMarkdown>
                       </div>
                     )}
                     
