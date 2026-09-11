@@ -106,7 +106,7 @@ const CoursePlayer = () => {
   const currentLevel = gamificationSettings?.levelThresholds 
     ? (gamificationSettings.levelThresholds.filter(t => (xp || 0) >= t.minXp).slice(-1)[0]?.level || 1)
     : 1;
-  const isLocked = currentLevel < requiredLevel && currentUser?.role !== 'admin';
+  const isLocked = currentUser?.role === 'guest' ? !currentCourse.allowGuests : (currentLevel < requiredLevel && currentUser?.role !== 'admin');
 
   if (isLocked) {
     return (

@@ -381,6 +381,10 @@ const OpenHouseHub = () => {
                         src={listing.cover_image || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80'} 
                         alt={listing.address}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80';
+                        }}
                       />
                       <div style={{
                         position: 'absolute',

@@ -1,12 +1,34 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Library, ListChecks, Video, Calendar, KeyRound, GraduationCap, Building } from 'lucide-react';
+import { Home, Library, ListChecks, Video, Calendar, KeyRound, GraduationCap, Building, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 
 const MobileNav = () => {
   const { currentUser } = useAuth();
   const { currentAgentData } = useAgent();
+
+  if (currentUser?.role === 'guest') {
+    return (
+      <nav className="mobile-nav" style={{ justifyContent: 'space-around' }}>
+        <NavLink 
+          to="/classroom" 
+          className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+        >
+          <GraduationCap size={24} />
+          <span>Classroom</span>
+        </NavLink>
+
+        <NavLink 
+          to="/settings" 
+          className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Settings size={24} />
+          <span>Settings</span>
+        </NavLink>
+      </nav>
+    );
+  }
 
   return (
     <nav className="mobile-nav">

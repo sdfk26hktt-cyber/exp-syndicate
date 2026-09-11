@@ -141,34 +141,32 @@ export default async function handler(req, res) {
           fubEventId = String(apptData.id || apptData.appointment?.id || fubEventId);
           fubStatus = 'created';
         } else {
-          console.warn(`FUB appointment creation status ${apptRes.status}, fallback to event log.`);
-          // Fallback to /v1/events if appointment fails
-          const eventPayload = {
-            source: fubSystemName,
-            system: fubSystemName,
-            type: 'General',
-            message: `Open House Approved: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${agentName} (Approved by ${reviewer})`,
-            person: {
-              contacted: false,
-              name: sellerName
+          const apptErrText = await apptRes.text().catch(() => '');
+          console.warn(`FUB appointment creation status ${apptRes.status}:`, apptErrText);
+          
+          // If seller contact already exists in FUB, attach an informational note to their profile
+          if (numericPersonId) {
+            try {
+              const notePayload = {
+                personId: numericPersonId,
+                body: `Open House Approved: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${agentName} (Approved by ${reviewer})`
+              };
+              const noteRes = await fetch('https://api.followupboss.com/v1/notes', {
+                method: 'POST',
+                headers: {
+                  'Authorization': authHeader,
+                  'X-System': fubSystemName,
+                  'X-System-Key': fubSystemKey,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(notePayload)
+              });
+              if (noteRes.ok) {
+                fubStatus = 'note_logged';
+              }
+            } catch (noteErr) {
+              console.warn('FUB note attachment error:', noteErr.message);
             }
-          };
-
-          const evtRes = await fetch('https://api.followupboss.com/v1/events', {
-            method: 'POST',
-            headers: {
-              'Authorization': authHeader,
-              'X-System': fubSystemName,
-              'X-System-Key': fubSystemKey,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(eventPayload)
-          });
-
-          if (evtRes.ok) {
-            const evtData = await evtRes.json();
-            fubEventId = String(evtData.id || fubEventId);
-            fubStatus = 'event_logged';
           }
         }
       } catch (fubErr) {

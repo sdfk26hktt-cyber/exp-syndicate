@@ -19,7 +19,7 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    const email = (session.user.email || session.user.phone || '').toLowerCase();
+    const email = (session.user.email || session.user.phone || '').toLowerCase().trim();
     let role = 'agent';
     let agentDisplayName = session.user.user_metadata?.name || null;
     let agentPhone = session.user.user_metadata?.phone || null;
@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
     } else {
       // 1. Check if user is in 'admins' table in Supabase
       try {
-        const { data } = await supabase.from('admins').select('email').ilike('email', email).single();
+        const { data } = await supabase.from('admins').select('email').ilike('email', email).maybeSingle();
         if (data) role = 'admin';
       } catch (err) {
         console.debug('admins table lookup error:', err);
@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }) => {
       // 2. Check snapshot in global_settings fallback
       if (role !== 'admin') {
         try {
-          const { data: snapshot } = await supabase.from('global_settings').select('*').eq('id', 'syndicate_admins_snapshot').single();
+          const { data: snapshot } = await supabase.from('global_settings').select('*').eq('id', 'syndicate_admins_snapshot').maybeSingle();
           if (snapshot?.data && Array.isArray(snapshot.data)) {
             const match = snapshot.data.some(a => {
               const aEmail = (typeof a === 'string' ? a : a.email || '').toLowerCase().trim();
@@ -68,25 +68,52 @@ export const AuthProvider = ({ children }) => {
       }
 
       // 4. Check agents table status / role
+      let foundInAgentsTable = false;
       try {
-        const { data: agentData } = await supabase.from('agents').select('*').ilike('id', email).single();
-        if (agentData) {
-          if (agentData.name) agentDisplayName = agentData.name;
-          if (agentData.profile?.phone || agentData.phone) agentPhone = agentData.profile?.phone || agentData.phone;
+        const { data: agentData } = await supabase.from('agents').select('*').ilike('id', email).maybeSingle();
+        let matchedAgent = agentData;
+        if (!matchedAgent) {
+          const { data: allAgents } = await supabase.from('agents').select('*');
+          if (allAgents && Array.isArray(allAgents)) {
+            matchedAgent = allAgents.find(a => 
+              a.id?.toLowerCase().trim() === email || 
+              a.profile?.email?.toLowerCase().trim() === email
+            );
+          }
+        }
+
+        if (matchedAgent) {
+          foundInAgentsTable = true;
+          if (matchedAgent.name) agentDisplayName = matchedAgent.name;
+          if (matchedAgent.profile?.phone || matchedAgent.phone) agentPhone = matchedAgent.profile?.phone || matchedAgent.phone;
           
-          if (agentData.status === 'admin' || agentData.role === 'admin' || agentData.profile?.role === 'Administrator') {
+          if (matchedAgent.status === 'admin' || matchedAgent.role === 'admin' || matchedAgent.profile?.role === 'Administrator') {
             role = 'admin';
-          } else if (agentData.status === 'guest' || agentData.role === 'guest' || agentData.profile?.role === 'Guest') {
+          } else if (matchedAgent.status === 'guest' || matchedAgent.role === 'guest' || matchedAgent.profile?.role === 'Guest') {
             role = 'guest';
+          } else {
+            // Explicit active agent status in database (e.g. 'team_agent', 'flex_agent', 'onboarding')
+            role = 'agent';
+
+            // Self-heal: update Supabase Auth user metadata so it never stays 'guest'
+            if (session.user?.user_metadata?.role === 'guest' || session.user?.app_metadata?.role === 'guest') {
+              supabase.auth.updateUser({
+                data: { role: 'agent' }
+              }).catch(() => {});
+            }
           }
         }
       } catch (err) {
         console.debug('agents table role check:', err);
       }
 
-      // Check session metadata for guest role fallback
-      if (role !== 'admin' && (session.user.user_metadata?.role === 'guest' || session.user.app_metadata?.role === 'guest')) {
-        role = 'guest';
+      // Check session metadata for guest role fallback ONLY if not found in agents table
+      if (!foundInAgentsTable && role !== 'admin') {
+        if (session.user.user_metadata?.role === 'guest' || session.user.app_metadata?.role === 'guest') {
+          role = 'guest';
+        } else {
+          role = 'agent';
+        }
       }
     }
 
@@ -480,7 +507,6 @@ export const AuthProvider = ({ children }) => {
       name: cleanName,
       xp: 0,
       status: 'guest',
-      role: 'guest',
       profile: {
         role: 'Guest',
         phone: cleanPhone,

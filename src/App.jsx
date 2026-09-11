@@ -89,7 +89,7 @@ const AppLayout = ({ children }) => {
         <main className="main-content" style={{ overflowY: 'auto' }}>
           {children}
         </main>
-        {currentUser?.role === 'agent' && <MobileNav />}
+        {(currentUser?.role === 'agent' || currentUser?.role === 'guest') && <MobileNav />}
       </div>
 
       {/* Floating eXp Button */}

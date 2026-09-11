@@ -432,9 +432,12 @@ export const AgentProvider = ({ children }) => {
       const settings = JSON.parse(localStorage.getItem('mockAdminSettings'));
       if (settings) setAdminSettings(settings);
       
-      if (currentUser?.role === 'agent') {
-        const myEmail = (currentUser.email || currentUser.id || '').toLowerCase();
-        const myData = db.find(a => a.id?.toLowerCase() === myEmail);
+      if (currentUser?.role === 'agent' || currentUser?.role === 'guest') {
+        const myEmail = (currentUser.email || currentUser.id || '').toLowerCase().trim();
+        const myData = db.find(a => 
+          a.id?.toLowerCase().trim() === myEmail || 
+          a.profile?.email?.toLowerCase().trim() === myEmail
+        );
 
         // Load classroom progress
         const savedProgressKey = `mockClassroomProgress_${myEmail}`;
@@ -455,52 +458,84 @@ export const AgentProvider = ({ children }) => {
         }
         
         if (myData) {
-          const assignedPb = getPlaybookForAgent(myData, catalog);
-          const assignedPhases = assignedPb?.phases || currentPlaybook;
-          const savedPhases = myData.phases || assignedPhases;
-          const mergedPhases = assignedPhases.map(assignedPhase => {
-            const savedPhase = savedPhases.find(p => p.id === assignedPhase.id);
-            if (!savedPhase) return assignedPhase;
+          const isRealGuest = myData.status === 'guest' || myData.role === 'guest' || myData.profile?.role === 'Guest';
+          if (currentUser.role === 'guest' && isRealGuest) {
+            setPhases([]);
+          } else {
+            const assignedPb = getPlaybookForAgent(myData, catalog);
+            const assignedPhases = assignedPb?.phases || currentPlaybook;
+            const savedPhases = myData.phases || assignedPhases;
+            const mergedPhases = assignedPhases.map(assignedPhase => {
+              const savedPhase = savedPhases.find(p => p.id === assignedPhase.id);
+              if (!savedPhase) return assignedPhase;
 
-            return {
-              ...assignedPhase,
-              items: assignedPhase.items.map(assignedItem => {
-                const savedItem = savedPhase.items?.find(i => i.id === assignedItem.id);
-                if (savedItem) {
-                  return {
-                    ...assignedItem,
-                    completed: Boolean(savedItem.completed),
-                    currentStepIndex: savedItem.currentStepIndex || 0
-                  };
-                }
-                return assignedItem;
-              })
-            };
-          });
+              return {
+                ...assignedPhase,
+                items: assignedPhase.items.map(assignedItem => {
+                  const savedItem = savedPhase.items?.find(i => i.id === assignedItem.id);
+                  if (savedItem) {
+                    return {
+                      ...assignedItem,
+                      completed: Boolean(savedItem.completed),
+                      currentStepIndex: savedItem.currentStepIndex || 0
+                    };
+                  }
+                  return assignedItem;
+                })
+              };
+            });
+            setPhases(mergedPhases);
+          }
 
-          setPhases(mergedPhases);
           setXp(myData.xp || 0);
           setCurrentAgentData(myData);
         } else {
-          // Init new agent
-          const sponsorToUse = settings ? settings.defaultSponsor : adminSettings.defaultSponsor;
-          const defaultPb = catalog[0] || DEFAULT_PLAYBOOK_CATALOG[0];
-          const newAgent = { 
-            id: currentUser.email || currentUser.id, 
-            name: currentUser.name, 
-            xp: 0, 
-            phases: defaultPb.phases, 
-            sponsor: sponsorToUse,
-            profile: { ...defaultProfile, playbook_id: defaultPb.id },
-            status: 'onboarding',
-            current_phase: defaultPb.phases[0]?.id || 'apply'
-          };
-          
-          await supabase.from('agents').insert([newAgent]);
-          setPhases(defaultPb.phases);
-          setXp(0);
-          setCurrentAgentData(newAgent);
-          setAgents([...db, newAgent]);
+          // Init new agent or guest
+          if (currentUser.role === 'guest') {
+            const newGuest = {
+              id: myEmail,
+              name: currentUser.name || myEmail.split('@')[0],
+              xp: 0,
+              phases: [],
+              sponsor: null,
+              profile: {
+                ...defaultProfile,
+                role: 'Guest',
+                email: myEmail,
+                phone: currentUser.phone || ''
+              },
+              status: 'guest',
+              current_phase: null
+            };
+            try {
+              await supabase.from('agents').upsert([newGuest]);
+            } catch (err) {
+              console.warn('Error creating guest record:', err);
+            }
+            setPhases([]);
+            setXp(0);
+            setCurrentAgentData(newGuest);
+            setAgents([...db, newGuest]);
+          } else {
+            const sponsorToUse = settings ? settings.defaultSponsor : adminSettings.defaultSponsor;
+            const defaultPb = catalog[0] || DEFAULT_PLAYBOOK_CATALOG[0];
+            const newAgent = { 
+              id: currentUser.email || currentUser.id, 
+              name: currentUser.name, 
+              xp: 0, 
+              phases: defaultPb.phases, 
+              sponsor: sponsorToUse,
+              profile: { ...defaultProfile, playbook_id: defaultPb.id },
+              status: 'onboarding',
+              current_phase: defaultPb.phases[0]?.id || 'apply'
+            };
+            
+            await supabase.from('agents').insert([newAgent]);
+            setPhases(defaultPb.phases);
+            setXp(0);
+            setCurrentAgentData(newAgent);
+            setAgents([...db, newAgent]);
+          }
         }
       }
     };
@@ -725,7 +760,7 @@ export const AgentProvider = ({ children }) => {
   };
 
   const updateAgentProfile = async (profileData, newName) => {
-    if (!currentUser || currentUser.role !== 'agent' || !currentAgentData) return;
+    if (!currentUser || (currentUser.role !== 'agent' && currentUser.role !== 'guest') || !currentAgentData) return;
     
     const updatedProfile = { ...currentAgentData.profile, ...profileData };
     const updatedName = newName || currentAgentData.name;

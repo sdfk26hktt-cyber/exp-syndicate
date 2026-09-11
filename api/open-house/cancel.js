@@ -95,33 +95,32 @@ export default async function handler(req, res) {
         }
       }
 
-      // Log a cancellation event on the seller contact timeline in FUB
-      try {
-        const authHeader = `Basic ${Buffer.from(`${fubApiKey}:`).toString('base64')}`;
-        const eventPayload = {
-          source: fubSystemName,
-          system: fubSystemName,
-          type: 'General',
-          message: `Open House CANCELLED: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${canceller}. Reason: ${cancelReason}`,
-          person: {
-            contacted: false,
-            name: sellerName
-          }
-        };
+      // If a linked seller contact ID exists in FUB, log an informational note to their profile
+      if (sellerContactId) {
+        const cleanSellerId = String(sellerContactId).replace(/\D/g, '');
+        if (cleanSellerId) {
+          try {
+            const authHeader = `Basic ${Buffer.from(`${fubApiKey}:`).toString('base64')}`;
+            const notePayload = {
+              personId: Number(cleanSellerId),
+              body: `Open House CANCELLED: ${listingAddress} on ${dateFormatted} (${timeRange}) by ${canceller}. Reason: ${cancelReason}`
+            };
 
-        await fetch('https://api.followupboss.com/v1/events', {
-          method: 'POST',
-          headers: {
-            'Authorization': authHeader,
-            'X-System': fubSystemName,
-            'X-System-Key': fubSystemKey,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(eventPayload),
-          signal: AbortSignal.timeout(5000)
-        });
-      } catch (fubLogErr) {
-        console.warn('FUB cancellation event log notice:', fubLogErr.message);
+            await fetch('https://api.followupboss.com/v1/notes', {
+              method: 'POST',
+              headers: {
+                'Authorization': authHeader,
+                'X-System': fubSystemName,
+                'X-System-Key': fubSystemKey,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(notePayload),
+              signal: AbortSignal.timeout(5000)
+            });
+          } catch (fubLogErr) {
+            console.warn('FUB cancellation note log notice:', fubLogErr.message);
+          }
+        }
       }
     }
 

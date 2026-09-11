@@ -17,7 +17,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Mail,
-  Edit3
+  Edit3,
+  GraduationCap
 } from 'lucide-react';
 
 const Settings = () => {
@@ -78,13 +79,13 @@ const Settings = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
-  // Load agent data if they exist
+  // Load agent/guest data if they exist
   useEffect(() => {
-    if (currentUser?.role === 'agent' && currentAgentData) {
-      setProfileName(currentAgentData.name || '');
-      setProfileEmail(currentAgentData.id || '');
+    if ((currentUser?.role === 'agent' || currentUser?.role === 'guest') && currentAgentData) {
+      setProfileName(currentAgentData.name || currentUser.name || '');
+      setProfileEmail(currentAgentData.id || currentUser.email || '');
       const p = currentAgentData.profile || {};
-      setProfilePhone(p.phone || '');
+      setProfilePhone(p.phone || currentUser.phone || '');
       setProfileAltPhone(p.altPhone || '');
       setProfileAddress(p.address || '');
       setProfileMarket(p.market || 'el_paso');
@@ -103,6 +104,10 @@ const Settings = () => {
       setProfileBirthday(p.birthday || '');
       setProfileInterests(p.interests || '');
       setProfileGoals(p.goals || '');
+    } else if (currentUser?.role === 'guest' && !currentAgentData) {
+      setProfileName(currentUser.name || '');
+      setProfileEmail(currentUser.email || '');
+      setProfilePhone(currentUser.phone || '');
     } else if (currentUser?.role === 'admin') {
       setProfileName(currentUser.name || '');
       setProfileEmail(currentUser.email || '');
@@ -123,7 +128,7 @@ const Settings = () => {
     setSaveMessage('');
     
     try {
-      if (currentUser?.role === 'agent') {
+      if (currentUser?.role === 'agent' || currentUser?.role === 'guest') {
         await updateAgentProfile({
           phone: profilePhone,
           altPhone: profileAltPhone,
@@ -258,6 +263,29 @@ const Settings = () => {
       {saveMessage && (
         <div style={styles.successToast}>
           <CheckCircle2 size={18} /> {saveMessage}
+        </div>
+      )}
+
+      {currentUser?.role === 'guest' && (
+        <div style={{
+          backgroundColor: 'rgba(0, 161, 224, 0.08)',
+          border: '1px solid rgba(0, 161, 224, 0.25)',
+          borderRadius: '10px',
+          padding: '1rem 1.25rem',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.85rem'
+        }}>
+          <GraduationCap size={28} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: '700', color: 'var(--color-dark-navy)', fontSize: '0.95rem' }}>
+              Guest Account (Classroom Access)
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+              You are logged in as a guest with access to designated Syndicate training courses. You can manage your contact information and password below.
+            </div>
+          </div>
         </div>
       )}
 

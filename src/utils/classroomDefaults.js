@@ -10,6 +10,7 @@ export const DEFAULT_COURSES = [
     category: 'Onboarding',
     coverImage: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80',
     unlockLevel: 1, // Level 1: Rookie (Unlocked for everyone)
+    allowGuests: true,
     estimatedHours: '3.5 Hours',
     modules: [
       {

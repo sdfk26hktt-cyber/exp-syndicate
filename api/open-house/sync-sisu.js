@@ -68,10 +68,23 @@ async function fetchSierraFeaturedListings() {
         const priceNum = priceAttrMatch ? parseInt(priceAttrMatch[1], 10) : (priceMainMatch ? parseInt(priceMainMatch[1].replace(/[^0-9]/g, ''), 10) : 0);
         const priceFormatted = priceMainMatch ? priceMainMatch[1].trim() : (priceNum ? `$${priceNum.toLocaleString()}` : 'Contact Team');
 
-        // 4. Photo CDN URL
-        const photoMatch = cardHtml.match(/data-src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["']/i) ||
-                           cardHtml.match(/src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["']/i);
-        const photo = photoMatch ? photoMatch[1] : null;
+        // 4. Photo CDN URL & High-Res Handling
+        const rawPhotoMatch = cardHtml.match(/data-src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["']/i) ||
+                              cardHtml.match(/src=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["']/i) ||
+                              cardHtml.match(/data-image=["'](https:\/\/cdn\.listingphotos\.sierrastatic\.com\/[^"']+)["']/i);
+        let photo = rawPhotoMatch ? rawPhotoMatch[1] : null;
+        if (photo && photo.includes('loadingphoto')) {
+          photo = null;
+        }
+        if (photo) {
+          // Normalize to high-resolution pics2x or pics3x
+          photo = photo.replace(/\/pics1x\//i, '/pics2x/');
+        }
+
+        // 4b. Detail URL on ephomesonline.com
+        const urlMatch = cardHtml.match(/data-url=["']([^"']+)["']/i) ||
+                         cardHtml.match(/href=["'](\/property-search\/detail\/[^"']+)["']/i);
+        const detailUrl = urlMatch ? (urlMatch[1].startsWith('http') ? urlMatch[1] : `https://www.ephomesonline.com${urlMatch[1]}`) : null;
 
         // 5. Bedrooms
         const bedsMatch = cardHtml.match(/<div class="si-listing__info-value">\s*<span>([^<]+)<\/span>\s*<\/div>\s*<div class="si-listing__info-label">\s*Beds/i);
@@ -115,6 +128,7 @@ async function fetchSierraFeaturedListings() {
           price: priceNum,
           priceFormatted,
           photo,
+          detailUrl,
           bedrooms,
           bathrooms,
           sqft,
@@ -248,6 +262,7 @@ export default async function handler(req, res) {
               seller_contact_name: d.people?.[0]?.name || 'Seller',
               seller_contact_id: d.people?.[0]?.id ? String(d.people[0].id) : null,
               seller_phone: '(915) 555-0100',
+              sierra_url: sierraMatch?.detailUrl || null,
               status: 'active',
               is_available_for_open_house: true,
               bedrooms,
@@ -339,6 +354,7 @@ export default async function handler(req, res) {
         seller_contact_name: 'Listing Client',
         seller_contact_id: null,
         seller_phone: '(915) 555-0100',
+        sierra_url: s.detailUrl || null,
         status: 'active',
         is_available_for_open_house: true,
         bedrooms: s.bedrooms || 3,

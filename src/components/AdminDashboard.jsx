@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
 import { useOpenHouse } from '../context/OpenHouseContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info, MapPin, BookOpen } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info, MapPin, BookOpen, Phone, RotateCcw, UserMinus, UserCheck } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -475,12 +475,21 @@ const AdminDashboard = () => {
   const [smsSending, setSmsSending] = useState(false);
   const [smsResult, setSmsResult] = useState(null);
   const [showRecipientsDrawer, setShowRecipientsDrawer] = useState(false);
+  const [smsExcludedIds, setSmsExcludedIds] = useState([]); // List of excluded recipient IDs or phones
+  const [smsExtraRecipients, setSmsExtraRecipients] = useState([]); // List of manually added recipients
+  const [smsDrawerSearch, setSmsDrawerSearch] = useState(''); // Search filter for recipient drawer
+  const [smsQuickOutsidePhone, setSmsQuickOutsidePhone] = useState('');
+  const [smsQuickOutsideName, setSmsQuickOutsideName] = useState('');
+  const [smsShowAddPanel, setSmsShowAddPanel] = useState(false);
+  const [smsAddMode, setSmsAddMode] = useState('directory'); // 'directory' | 'outside'
 
-  // Helper to compute target recipients for LinqApp SMS
+  // Helper to compute target recipients for LinqApp SMS with removals and manual additions applied
   const getSmsRecipients = () => {
+    let baseList = [];
+
     if (smsTargetType === 'individual') {
       if (smsSelectedAgent) {
-        return [{
+        baseList.push({
           id: smsSelectedAgent.id,
           name: smsSelectedAgent.name || smsSelectedAgent.id,
           phone: smsSelectedAgent.profile?.phone || smsSelectedAgent.phone || '',
@@ -489,10 +498,10 @@ const AdminDashboard = () => {
           city: smsSelectedAgent.profile?.city || '',
           state: smsSelectedAgent.profile?.state || '',
           group: smsSelectedAgent.status || 'Agent'
-        }];
+        });
       }
       if (smsCustomPhone.trim()) {
-        return [{
+        baseList.push({
           id: 'custom',
           name: smsCustomName.trim() || 'Custom Contact',
           phone: smsCustomPhone.trim(),
@@ -500,14 +509,12 @@ const AdminDashboard = () => {
           market: 'Custom',
           city: '',
           state: '',
-          group: 'Custom'
-        }];
+          group: 'Custom',
+          isCustom: true
+        });
       }
-      return [];
-    }
-
-    if (smsTargetType === 'group') {
-      return (agents || []).filter(a => {
+    } else if (smsTargetType === 'group') {
+      baseList = (agents || []).filter(a => {
         const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
         const subrole = a.profile?.team_subrole || 'team_agent';
         if (smsSelectedGroup === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
@@ -528,10 +535,8 @@ const AdminDashboard = () => {
         state: a.profile?.state || '',
         group: getAgentRoleLabel(a)
       }));
-    }
-
-    if (smsTargetType === 'market') {
-      return (agents || []).filter(a => {
+    } else if (smsTargetType === 'market') {
+      baseList = (agents || []).filter(a => {
         const market = getAgentMarket(a);
         if (smsSelectedMarket === 'el_paso') return market === 'el_paso';
         if (smsSelectedMarket === 'texas_all') return market === 'el_paso' || market === 'texas_other';
@@ -549,10 +554,8 @@ const AdminDashboard = () => {
         state: a.profile?.state || '',
         group: getAgentMarketLabel(a)
       }));
-    }
-
-    if (smsTargetType === 'matrix') {
-      return (agents || []).filter(a => {
+    } else if (smsTargetType === 'matrix') {
+      baseList = (agents || []).filter(a => {
         const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
         const subrole = a.profile?.team_subrole || 'team_agent';
         const market = getAgentMarket(a);
@@ -586,10 +589,8 @@ const AdminDashboard = () => {
         state: a.profile?.state || '',
         group: `${getAgentRoleLabel(a)} (${getAgentMarketLabel(a)})`
       }));
-    }
-
-    if (smsTargetType === 'all') {
-      return (agents || []).map(a => ({
+    } else if (smsTargetType === 'all') {
+      baseList = (agents || []).map(a => ({
         id: a.id,
         name: a.name || a.id,
         phone: a.profile?.phone || a.phone || '',
@@ -601,7 +602,138 @@ const AdminDashboard = () => {
       }));
     }
 
-    return [];
+    // 1. Exclude any recipients whose ID or phone number is in smsExcludedIds
+    const filteredBase = baseList.filter(r => {
+      if (r.id && smsExcludedIds.includes(r.id)) return false;
+      const cleanPhone = r.phone ? r.phone.replace(/\D/g, '') : '';
+      if (cleanPhone && cleanPhone.length >= 10 && smsExcludedIds.includes(cleanPhone)) return false;
+      return true;
+    });
+
+    // 2. Append extra manually added recipients (avoiding duplicates)
+    const existingIds = new Set(filteredBase.map(r => r.id).filter(Boolean));
+    const existingPhones = new Set(filteredBase.map(r => r.phone ? r.phone.replace(/\D/g, '') : '').filter(p => p.length >= 10));
+
+    const finalExtras = smsExtraRecipients.filter(extra => {
+      if (extra.id && smsExcludedIds.includes(extra.id)) return false;
+      const extraPhone = extra.phone ? extra.phone.replace(/\D/g, '') : '';
+      if (extraPhone && smsExcludedIds.includes(extraPhone)) return false;
+      if (extra.id && existingIds.has(extra.id)) return false;
+      if (extraPhone && existingPhones.has(extraPhone)) return false;
+      return true;
+    });
+
+    return [...filteredBase, ...finalExtras];
+  };
+
+  // Quick recipient remove action (X button)
+  const handleRemoveSmsRecipient = (recipient) => {
+    if (!recipient) return;
+
+    // Check if in extra recipients
+    const isInExtras = smsExtraRecipients.some(
+      x => (recipient.id && x.id === recipient.id) ||
+           (x.phone && recipient.phone && x.phone.replace(/\D/g, '') === recipient.phone.replace(/\D/g, ''))
+    );
+
+    if (isInExtras) {
+      setSmsExtraRecipients(prev => prev.filter(
+        x => (recipient.id ? x.id !== recipient.id : true) &&
+             (x.phone && recipient.phone ? x.phone.replace(/\D/g, '') !== recipient.phone.replace(/\D/g, '') : true)
+      ));
+    }
+
+    // If individual mode, reset selected agent or custom phone
+    if (smsTargetType === 'individual') {
+      if (smsSelectedAgent && smsSelectedAgent.id === recipient.id) {
+        setSmsSelectedAgent(null);
+      }
+      if (smsCustomPhone && (smsCustomPhone === recipient.phone || recipient.id === 'custom' || String(recipient.id).startsWith('custom_'))) {
+        setSmsCustomPhone('');
+        setSmsCustomName('');
+      }
+    }
+
+    // Add to excluded list
+    setSmsExcludedIds(prev => {
+      const next = [...prev];
+      if (recipient.id && !next.includes(recipient.id)) next.push(recipient.id);
+      const cleanPhone = recipient.phone ? recipient.phone.replace(/\D/g, '') : '';
+      if (cleanPhone && cleanPhone.length >= 10 && !next.includes(cleanPhone)) next.push(cleanPhone);
+      return next;
+    });
+  };
+
+  // Quick add recipient from directory
+  const handleAddDirectoryRecipient = (agent) => {
+    if (!agent) return;
+
+    // Un-exclude if previously excluded
+    if (smsExcludedIds.includes(agent.id)) {
+      setSmsExcludedIds(prev => prev.filter(id => id !== agent.id));
+    }
+    const cleanPhone = (agent.profile?.phone || agent.phone || '').replace(/\D/g, '');
+    if (cleanPhone && smsExcludedIds.includes(cleanPhone)) {
+      setSmsExcludedIds(prev => prev.filter(id => id !== cleanPhone));
+    }
+
+    const newEntry = {
+      id: agent.id,
+      name: agent.name || agent.id,
+      phone: agent.profile?.phone || agent.phone || '',
+      role: getAgentRoleLabel(agent),
+      market: getAgentMarketLabel(agent),
+      city: agent.profile?.city || '',
+      state: agent.profile?.state || '',
+      group: getAgentRoleLabel(agent),
+      isAdded: true
+    };
+
+    setSmsExtraRecipients(prev => {
+      if (prev.some(x => x.id === agent.id || (x.phone && newEntry.phone && x.phone.replace(/\D/g, '') === newEntry.phone.replace(/\D/g, '')))) {
+        return prev;
+      }
+      return [...prev, newEntry];
+    });
+
+    setShowRecipientsDrawer(true);
+    setActionSuccessMsg(`Added ${agent.name || agent.id} to recipient list`);
+    setTimeout(() => setActionSuccessMsg(''), 3000);
+  };
+
+  // Quick add outside phone number
+  const handleAddOutsideRecipient = (e) => {
+    e?.preventDefault();
+    const rawPhone = smsQuickOutsidePhone.trim();
+    const digits = rawPhone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      alert('Please enter a valid 10-digit phone number (e.g. (915) 555-0199).');
+      return;
+    }
+
+    const newContact = {
+      id: `custom_${Date.now()}_${digits}`,
+      name: smsQuickOutsideName.trim() || `Outside Contact (${rawPhone})`,
+      phone: rawPhone,
+      role: 'Outside Contact',
+      market: 'Custom',
+      city: '',
+      state: '',
+      group: 'Outside Number',
+      isCustom: true,
+      isAdded: true
+    };
+
+    if (smsExcludedIds.includes(digits)) {
+      setSmsExcludedIds(prev => prev.filter(id => id !== digits));
+    }
+
+    setSmsExtraRecipients(prev => [...prev, newContact]);
+    setSmsQuickOutsidePhone('');
+    setSmsQuickOutsideName('');
+    setShowRecipientsDrawer(true);
+    setActionSuccessMsg(`Added outside number ${newContact.name} to recipient list`);
+    setTimeout(() => setActionSuccessMsg(''), 3000);
   };
 
   const handleSendSmsBroadcast = async (e) => {
@@ -3117,7 +3249,10 @@ const AdminDashboard = () => {
                   <div style={{ display: 'flex', gap: '0.35rem', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
-                      onClick={() => setSmsTargetType('group')}
+                      onClick={() => {
+                        setSmsTargetType('group');
+                        setSmsExcludedIds([]);
+                      }}
                       style={{
                         padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
@@ -3133,7 +3268,10 @@ const AdminDashboard = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSmsTargetType('market')}
+                      onClick={() => {
+                        setSmsTargetType('market');
+                        setSmsExcludedIds([]);
+                      }}
                       style={{
                         padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
@@ -3149,7 +3287,10 @@ const AdminDashboard = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSmsTargetType('matrix')}
+                      onClick={() => {
+                        setSmsTargetType('matrix');
+                        setSmsExcludedIds([]);
+                      }}
                       style={{
                         padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
@@ -3165,7 +3306,10 @@ const AdminDashboard = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSmsTargetType('all')}
+                      onClick={() => {
+                        setSmsTargetType('all');
+                        setSmsExcludedIds([]);
+                      }}
                       style={{
                         padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
@@ -3181,7 +3325,10 @@ const AdminDashboard = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSmsTargetType('individual')}
+                      onClick={() => {
+                        setSmsTargetType('individual');
+                        setSmsExcludedIds([]);
+                      }}
                       style={{
                         padding: '0.4rem 0.75rem',
                         borderRadius: '6px',
@@ -3411,76 +3558,376 @@ const AdminDashboard = () => {
                   </div>
                 )}
 
-                {/* Recipient Statistics & Expand Drawer */}
+                {/* Recipient Statistics, Management, and Quick Add Toolbar */}
                 {(() => {
                   const targetRecipients = getSmsRecipients();
                   const validRecipients = targetRecipients.filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10);
                   const missingPhoneRecipients = targetRecipients.filter(r => !r.phone || r.phone.replace(/\D/g, '').length < 10);
 
+                  const filteredDrawerRecipients = targetRecipients.filter(r => {
+                    if (!smsDrawerSearch.trim()) return true;
+                    const query = smsDrawerSearch.toLowerCase();
+                    return (
+                      (r.name || '').toLowerCase().includes(query) ||
+                      (r.phone || '').replace(/\D/g, '').includes(query.replace(/\D/g, '')) ||
+                      (r.phone || '').toLowerCase().includes(query) ||
+                      (r.role || '').toLowerCase().includes(query) ||
+                      (r.market || '').toLowerCase().includes(query) ||
+                      (r.group || '').toLowerCase().includes(query)
+                    );
+                  });
+
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                      {/* Recipient Summary Badges & Action Bar */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--color-success)', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '700' }}>
                             <CheckCircle2 size={14} /> {validRecipients.length} Recipient{validRecipients.length === 1 ? '' : 's'} Ready to Text
                           </span>
+
                           {missingPhoneRecipients.length > 0 && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-danger)', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '600' }}>
-                              <AlertCircle size={14} /> {missingPhoneRecipients.length} Missing Phone Number
+                              <AlertCircle size={14} /> {missingPhoneRecipients.length} Missing Phone
+                            </span>
+                          )}
+
+                          {smsExcludedIds.length > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#fef3c7', color: '#b45309', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '600' }}>
+                              <UserMinus size={13} /> {smsExcludedIds.length} Removed
+                              <button
+                                type="button"
+                                onClick={() => setSmsExcludedIds([])}
+                                title="Restore all removed recipients"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#b45309',
+                                  textDecoration: 'underline',
+                                  cursor: 'pointer',
+                                  fontSize: '0.78rem',
+                                  fontWeight: '700',
+                                  marginLeft: '2px',
+                                  padding: 0
+                                }}
+                              >
+                                ↺ Restore All
+                              </button>
+                            </span>
+                          )}
+
+                          {smsExtraRecipients.length > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#e0e7ff', color: '#4338ca', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: '600' }}>
+                              <UserCheck size={13} /> {smsExtraRecipients.length} Added
+                              <button
+                                type="button"
+                                onClick={() => setSmsExtraRecipients([])}
+                                title="Clear manually added recipients"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#4338ca',
+                                  textDecoration: 'underline',
+                                  cursor: 'pointer',
+                                  fontSize: '0.78rem',
+                                  fontWeight: '700',
+                                  marginLeft: '2px',
+                                  padding: 0
+                                }}
+                              >
+                                ✕ Clear
+                              </button>
                             </span>
                           )}
                         </div>
 
-                        {targetRecipients.length > 0 && (
+                        {/* Control Buttons: Quick Add & Drawer View */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           <button
                             type="button"
-                            onClick={() => setShowRecipientsDrawer(!showRecipientsDrawer)}
+                            onClick={() => setSmsShowAddPanel(!smsShowAddPanel)}
                             style={{
-                              background: 'none',
-                              border: 'none',
-                              color: 'var(--color-primary)',
-                              fontSize: '0.82rem',
-                              fontWeight: '700',
-                              cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.25rem'
+                              gap: '0.35rem',
+                              padding: '0.35rem 0.75rem',
+                              borderRadius: '6px',
+                              border: smsShowAddPanel ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border)',
+                              backgroundColor: smsShowAddPanel ? 'rgba(0, 161, 224, 0.1)' : 'white',
+                              color: smsShowAddPanel ? 'var(--color-primary)' : 'var(--color-dark-navy)',
+                              fontSize: '0.82rem',
+                              fontWeight: '700',
+                              cursor: 'pointer'
                             }}
                           >
-                            {showRecipientsDrawer ? 'Hide Recipient List ▲' : `View All ${targetRecipients.length} Recipients ▼`}
+                            <Plus size={14} /> {smsShowAddPanel ? 'Close Quick Add' : 'Add Recipient'}
                           </button>
-                        )}
+
+                          {targetRecipients.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowRecipientsDrawer(!showRecipientsDrawer)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--color-primary)',
+                                fontSize: '0.82rem',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem'
+                              }}
+                            >
+                              {showRecipientsDrawer ? 'Hide Recipient List ▲' : `Manage All ${targetRecipients.length} Recipients ▼`}
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Expandable Recipient List Drawer */}
+                      {/* Quick Add Recipient Panel */}
+                      {smsShowAddPanel && (
+                        <div style={{
+                          backgroundColor: '#f8fafc',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          padding: '1rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.75rem'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <strong style={{ fontSize: '0.88rem', color: 'var(--color-dark-navy)' }}>
+                                ➕ Quick Add Recipient to Broadcast
+                              </strong>
+                              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                                Add another person from the directory or enter an outside phone number.
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.35rem', backgroundColor: '#e2e8f0', padding: '3px', borderRadius: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSmsAddMode('directory')}
+                                style={{
+                                  padding: '0.25rem 0.6rem',
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  backgroundColor: smsAddMode === 'directory' ? 'white' : 'transparent',
+                                  color: smsAddMode === 'directory' ? 'var(--color-dark-navy)' : '#64748b',
+                                  fontSize: '0.76rem',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                👤 From Directory
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSmsAddMode('outside')}
+                                style={{
+                                  padding: '0.25rem 0.6rem',
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  backgroundColor: smsAddMode === 'outside' ? 'white' : 'transparent',
+                                  color: smsAddMode === 'outside' ? 'var(--color-dark-navy)' : '#64748b',
+                                  fontSize: '0.76rem',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                📞 Outside Number
+                              </button>
+                            </div>
+                          </div>
+
+                          {smsAddMode === 'directory' ? (
+                            <div>
+                              <AgentAutocomplete
+                                agents={agents}
+                                placeholder="Search directory by agent name, email, or phone to add..."
+                                onSelect={(agent) => {
+                                  handleAddDirectoryRecipient(agent);
+                                }}
+                              />
+                              <span style={{ display: 'block', fontSize: '0.74rem', color: '#64748b', marginTop: '0.35rem' }}>
+                                💡 Tip: Click any agent or guest in the dropdown to instantly add them to this broadcast.
+                              </span>
+                            </div>
+                          ) : (
+                            <form onSubmit={handleAddOutsideRecipient} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <input
+                                type="text"
+                                placeholder="+1 (915) 555-0199"
+                                value={smsQuickOutsidePhone}
+                                onChange={(e) => setSmsQuickOutsidePhone(e.target.value)}
+                                style={{ ...styles.input, flex: '1 1 180px', minWidth: '150px' }}
+                                autoFocus
+                              />
+                              <input
+                                type="text"
+                                placeholder="Contact Name (optional)"
+                                value={smsQuickOutsideName}
+                                onChange={(e) => setSmsQuickOutsideName(e.target.value)}
+                                style={{ ...styles.input, flex: '1 1 180px', minWidth: '150px' }}
+                              />
+                              <button
+                                type="submit"
+                                style={{
+                                  padding: '0.55rem 1rem',
+                                  backgroundColor: 'var(--color-primary)',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  fontWeight: '700',
+                                  fontSize: '0.82rem',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem'
+                                }}
+                              >
+                                <Plus size={14} /> Add to Batch
+                              </button>
+                            </form>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Expandable Recipient List Drawer with Search & 1-Click Removal */}
                       {showRecipientsDrawer && (
-                        <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: '8px', backgroundColor: '#fafafa', padding: '0.5rem' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.5rem' }}>
-                            {targetRecipients.map((r, idx) => {
-                              const hasPhone = r.phone && r.phone.replace(/\D/g, '').length >= 10;
-                              return (
-                                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '0.4rem 0.6rem', backgroundColor: 'white', borderRadius: '6px', border: hasPhone ? '1px solid #e2e8f0' : '1px dashed #fca5a5', fontSize: '0.78rem' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontWeight: '600', color: 'var(--color-dark-navy)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                      {r.name}
-                                    </span>
-                                    <span style={{ color: hasPhone ? 'var(--color-text-muted)' : '#ef4444', fontWeight: hasPhone ? '400' : '700', fontSize: '0.74rem' }}>
-                                      {hasPhone ? r.phone : 'No Phone'}
-                                    </span>
+                        <div style={{ border: '1px solid var(--color-border)', borderRadius: '8px', backgroundColor: '#fafafa', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {/* Search Filter Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+                              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                              <input
+                                type="text"
+                                placeholder={`Filter ${targetRecipients.length} recipients by name, phone, role, market...`}
+                                value={smsDrawerSearch}
+                                onChange={(e) => setSmsDrawerSearch(e.target.value)}
+                                style={{
+                                  ...styles.input,
+                                  paddingLeft: '32px',
+                                  paddingTop: '0.35rem',
+                                  paddingBottom: '0.35rem',
+                                  fontSize: '0.8rem',
+                                  width: '100%',
+                                  backgroundColor: 'white'
+                                }}
+                              />
+                            </div>
+                            <span style={{ fontSize: '0.76rem', color: 'var(--color-text-muted)', fontWeight: '600' }}>
+                              Showing {filteredDrawerRecipients.length} of {targetRecipients.length}
+                            </span>
+                          </div>
+
+                          {/* Grid of Recipient Cards with X Removal */}
+                          <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.5rem', paddingRight: '2px' }}>
+                            {filteredDrawerRecipients.length === 0 ? (
+                              <div style={{ gridColumn: '1 / -1', padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.82rem' }}>
+                                {smsDrawerSearch ? `No recipients matching "${smsDrawerSearch}"` : 'No recipients currently in list.'}
+                              </div>
+                            ) : (
+                              filteredDrawerRecipients.map((r, idx) => {
+                                const hasPhone = r.phone && r.phone.replace(/\D/g, '').length >= 10;
+                                return (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      padding: '0.5rem 0.65rem',
+                                      backgroundColor: 'white',
+                                      borderRadius: '6px',
+                                      border: r.isCustom ? '1px solid #c7d2fe' : r.isAdded ? '1px solid #bbf7d0' : hasPhone ? '1px solid #e2e8f0' : '1px dashed #fca5a5',
+                                      fontSize: '0.78rem',
+                                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1, paddingRight: '0.4rem' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: '700', color: 'var(--color-dark-navy)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '160px' }}>
+                                          {r.name}
+                                        </span>
+                                        {r.isCustom && (
+                                          <span style={{ fontSize: '0.62rem', backgroundColor: '#e0e7ff', color: '#4338ca', padding: '1px 4px', borderRadius: '3px', fontWeight: '700' }}>
+                                            📞 Outside
+                                          </span>
+                                        )}
+                                        {r.isAdded && !r.isCustom && (
+                                          <span style={{ fontSize: '0.62rem', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 4px', borderRadius: '3px', fontWeight: '700' }}>
+                                            ➕ Added
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                        <span style={{ color: hasPhone ? 'var(--color-text-muted)' : '#ef4444', fontWeight: hasPhone ? '400' : '700', fontSize: '0.74rem' }}>
+                                          {hasPhone ? r.phone : '⚠️ No Phone'}
+                                        </span>
+                                        {r.role && (
+                                          <span style={{ fontSize: '0.65rem', backgroundColor: '#f1f5f9', color: '#475569', padding: '1px 4px', borderRadius: '3px' }}>
+                                            {r.role}
+                                          </span>
+                                        )}
+                                        {r.market && (
+                                          <span style={{ fontSize: '0.65rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 4px', borderRadius: '3px' }}>
+                                            📍 {r.market}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* 1-Click Removal Button (X) */}
+                                    <button
+                                      type="button"
+                                      title={`Remove ${r.name} from this SMS broadcast`}
+                                      onClick={() => handleRemoveSmsRecipient(r)}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '24px',
+                                        height: '24px',
+                                        borderRadius: '50%',
+                                        border: '1px solid #e2e8f0',
+                                        backgroundColor: '#f8fafc',
+                                        color: '#64748b',
+                                        cursor: 'pointer',
+                                        flexShrink: 0,
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#fee2e2';
+                                        e.currentTarget.style.color = '#ef4444';
+                                        e.currentTarget.style.borderColor = '#fca5a5';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#f8fafc';
+                                        e.currentTarget.style.color = '#64748b';
+                                        e.currentTarget.style.borderColor = '#e2e8f0';
+                                      }}
+                                    >
+                                      <X size={13} strokeWidth={2.5} />
+                                    </button>
                                   </div>
-                                  <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.68rem', backgroundColor: '#f1f5f9', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>
-                                      {r.role || r.group}
-                                    </span>
-                                    {r.market && (
-                                      <span style={{ fontSize: '0.68rem', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '3px' }}>
-                                        📍 {r.market}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.35rem', borderTop: '1px solid #e2e8f0', fontSize: '0.72rem', color: '#94a3b8' }}>
+                            <span>💡 Tip: Click the ✕ button on any recipient to remove them from this SMS broadcast.</span>
+                            {targetRecipients.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setShowRecipientsDrawer(false)}
+                                style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontWeight: '700', fontSize: '0.72rem' }}
+                              >
+                                Close List ▲
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
