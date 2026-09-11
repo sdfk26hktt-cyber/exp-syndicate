@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
 import { useCommunity } from '../context/CommunityContext';
 import { useOpenHouse } from '../context/OpenHouseContext';
-import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info, MapPin, BookOpen, Phone, RotateCcw, UserMinus, UserCheck } from 'lucide-react';
+import { UserPlus, Search, Shield, Video, Calendar, Plus, Check, X, MessageSquare, Send, Edit2, LogIn, Trash2, KeyRound, Lock, Eye, EyeOff, Sparkles, Award, Star, Trophy, GraduationCap, Home, Building, FileText, RefreshCw, Smartphone, Users, Radio, AlertCircle, CheckCircle2, MessageCircle, Info, MapPin, BookOpen, Phone, RotateCcw, UserMinus, UserCheck, Paperclip, Image as ImageIcon, Link2, UploadCloud } from 'lucide-react';
 import FullCalendar from './FullCalendar';
 import CommunityFeed from './CommunityFeed';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -483,6 +483,16 @@ const AdminDashboard = () => {
   const [smsShowAddPanel, setSmsShowAddPanel] = useState(false);
   const [smsAddMode, setSmsAddMode] = useState('directory'); // 'directory' | 'outside'
 
+  // SMS Media / Picture Attachment State
+  const [smsMediaUrl, setSmsMediaUrl] = useState('');
+  const [smsAttachmentId, setSmsAttachmentId] = useState('');
+  const [smsAttachmentName, setSmsAttachmentName] = useState('');
+  const [smsAttachmentPreview, setSmsAttachmentPreview] = useState('');
+  const [smsAttachmentSize, setSmsAttachmentSize] = useState(0);
+  const [smsUploadingMedia, setSmsUploadingMedia] = useState(false);
+  const [smsShowUrlInput, setSmsShowUrlInput] = useState(false);
+  const [smsTempUrlInput, setSmsTempUrlInput] = useState('');
+
   // Helper to compute target recipients for LinqApp SMS with removals and manual additions applied
   const getSmsRecipients = () => {
     let baseList = [];
@@ -736,10 +746,91 @@ const AdminDashboard = () => {
     setTimeout(() => setActionSuccessMsg(''), 3000);
   };
 
+  // Handle local file selection and upload to LinqApp attachments
+  const handleSmsFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 25 * 1024 * 1024) {
+      alert('File size exceeds maximum limit of 25MB.');
+      return;
+    }
+
+    // Generate local preview immediately
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result;
+      setSmsAttachmentPreview(dataUrl);
+      setSmsAttachmentName(file.name);
+      setSmsAttachmentSize(file.size);
+      setSmsUploadingMedia(true);
+
+      try {
+        const res = await fetch('/api/messages/upload-attachment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type || 'image/jpeg',
+            dataUrl: dataUrl
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.attachment_id) {
+          setSmsAttachmentId(data.attachment_id);
+          setSmsMediaUrl(data.download_url || '');
+          setActionSuccessMsg(`📎 Attached "${file.name}" for MMS / iMessage broadcast`);
+          setTimeout(() => setActionSuccessMsg(''), 3000);
+        } else {
+          console.warn('Upload API notice:', data.error);
+          setActionSuccessMsg(`📎 Preview loaded for "${file.name}"`);
+          setTimeout(() => setActionSuccessMsg(''), 3000);
+        }
+      } catch (err) {
+        console.error('Attachment upload error:', err);
+      } finally {
+        setSmsUploadingMedia(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Handle pasting an external image URL
+  const handleApplySmsUrlAttachment = (e) => {
+    e?.preventDefault();
+    const url = smsTempUrlInput.trim();
+    if (!url || !url.startsWith('http')) {
+      alert('Please enter a valid HTTP or HTTPS image URL.');
+      return;
+    }
+    const filename = url.split('/').pop()?.split('?')[0] || 'attached-image.jpg';
+    setSmsMediaUrl(url);
+    setSmsAttachmentId('');
+    setSmsAttachmentName(filename);
+    setSmsAttachmentPreview(url);
+    setSmsAttachmentSize(0);
+    setSmsShowUrlInput(false);
+    setSmsTempUrlInput('');
+    setActionSuccessMsg(`📎 Attached image URL: ${filename}`);
+    setTimeout(() => setActionSuccessMsg(''), 3000);
+  };
+
+  const handleClearSmsAttachment = () => {
+    setSmsMediaUrl('');
+    setSmsAttachmentId('');
+    setSmsAttachmentName('');
+    setSmsAttachmentPreview('');
+    setSmsAttachmentSize(0);
+    setSmsShowUrlInput(false);
+    setSmsTempUrlInput('');
+  };
+
   const handleSendSmsBroadcast = async (e) => {
     e?.preventDefault();
-    if (!smsMessage.trim()) {
-      alert('Please enter a message to send.');
+    if (!smsMessage.trim() && !smsMediaUrl && !smsAttachmentId && !smsAttachmentPreview) {
+      alert('Please enter a message or attach a picture to send.');
       return;
     }
 
@@ -757,7 +848,9 @@ const AdminDashboard = () => {
       : smsTargetType === 'matrix' ? `segmented audience (${smsMatrixRole} in ${smsMatrixMarket})`
       : (validRecipients[0].name || validRecipients[0].phone);
 
-    if (!window.confirm(`Are you sure you want to send this SMS broadcast via LinqApp to ${validRecipients.length} recipient(s) (${targetLabel})?`)) {
+    const attachLabel = (smsAttachmentName || smsMediaUrl || smsAttachmentId) ? ` + 📎 Picture/Media (${smsAttachmentName || 'Attached'})` : '';
+
+    if (!window.confirm(`Are you sure you want to send this SMS broadcast via LinqApp to ${validRecipients.length} recipient(s) (${targetLabel})${attachLabel}?`)) {
       return;
     }
 
@@ -770,9 +863,11 @@ const AdminDashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipients: validRecipients,
-          message: smsMessage,
+          message: smsMessage || ' ',
           groupName: smsTargetType === 'all' ? 'Entire Directory' : smsTargetType === 'group' ? smsSelectedGroup : smsTargetType === 'market' ? smsSelectedMarket : 'Segmented Broadcast',
-          senderName: userName
+          senderName: userName,
+          mediaUrl: smsMediaUrl || undefined,
+          attachmentId: smsAttachmentId || undefined
         })
       });
 
@@ -784,9 +879,11 @@ const AdminDashboard = () => {
           failedCount: data.failedCount,
           total: validRecipients.length,
           results: data.results,
+          hasAttachment: !!(smsMediaUrl || smsAttachmentId),
           timestamp: new Date().toLocaleTimeString()
         });
         setSmsMessage('');
+        handleClearSmsAttachment();
         setActionSuccessMsg(`🚀 LinqApp SMS broadcast delivered! ${data.sentCount} sent successfully.`);
         setTimeout(() => setActionSuccessMsg(''), 5000);
       } else {
@@ -4000,6 +4097,178 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
+                {/* Media / Picture Attachment Controls */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--color-dark-navy)', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <Paperclip size={14} color="var(--color-primary)" /> ATTACH PICTURE / FLYER (MMS):
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      {/* Hidden File Input */}
+                      <input
+                        type="file"
+                        id="sms-file-upload-input"
+                        accept="image/jpeg,image/png,image/gif,image/webp,image/heic,application/pdf"
+                        onChange={handleSmsFileSelect}
+                        style={{ display: 'none' }}
+                      />
+                      <label
+                        htmlFor="sms-file-upload-input"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.3rem 0.65rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: '#f8fafc',
+                          color: 'var(--color-dark-navy)',
+                          fontSize: '0.78rem',
+                          fontWeight: '600',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <ImageIcon size={14} color="var(--color-primary)" /> Upload Picture / Flyer
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setSmsShowUrlInput(!smsShowUrlInput)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.3rem 0.65rem',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: smsShowUrlInput ? 'rgba(0, 161, 224, 0.1)' : '#f8fafc',
+                          color: smsShowUrlInput ? 'var(--color-primary)' : 'var(--color-dark-navy)',
+                          fontSize: '0.78rem',
+                          fontWeight: '600',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Link2 size={14} /> Paste Image URL
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* URL Input Bar */}
+                  {smsShowUrlInput && (
+                    <form onSubmit={handleApplySmsUrlAttachment} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', backgroundColor: '#f8fafc', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                      <input
+                        type="url"
+                        placeholder="https://example.com/images/flyer.png"
+                        value={smsTempUrlInput}
+                        onChange={(e) => setSmsTempUrlInput(e.target.value)}
+                        style={{ ...styles.input, flex: 1, fontSize: '0.82rem', padding: '0.4rem 0.75rem' }}
+                        autoFocus
+                      />
+                      <button
+                        type="submit"
+                        style={{
+                          padding: '0.4rem 0.85rem',
+                          backgroundColor: 'var(--color-primary)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Attach URL
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setSmsShowUrlInput(false); setSmsTempUrlInput(''); }}
+                        style={{
+                          padding: '0.4rem 0.65rem',
+                          backgroundColor: 'transparent',
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Active Attachment Card Preview */}
+                  {(smsAttachmentPreview || smsMediaUrl || smsAttachmentName || smsUploadingMedia) && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.6rem 0.85rem',
+                      borderRadius: '8px',
+                      backgroundColor: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      marginBottom: '0.75rem',
+                      gap: '0.75rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                        {smsAttachmentPreview && (smsAttachmentName?.match(/\.(jpg|jpeg|png|gif|webp|heic)$/i) || smsAttachmentPreview.startsWith('data:image') || smsAttachmentPreview.startsWith('http')) ? (
+                          <img
+                            src={smsAttachmentPreview}
+                            alt="Attachment Preview"
+                            style={{ width: '46px', height: '46px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <div style={{ width: '46px', height: '46px', borderRadius: '6px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <FileText size={24} color="#3b82f6" />
+                          </div>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#1e3a8a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {smsAttachmentName || 'Attached Media'}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+                            {smsUploadingMedia ? (
+                              <>
+                                <RefreshCw size={12} className="animate-spin" /> Uploading to Linq CDN...
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 size={12} color="#10b981" />
+                                {smsAttachmentSize > 0 ? `${(smsAttachmentSize / (1024 * 1024)).toFixed(2)} MB • ` : ''}
+                                MMS & iMessage Attachment Ready
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleClearSmsAttachment}
+                        title="Remove attachment"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '26px',
+                          height: '26px',
+                          borderRadius: '50%',
+                          border: '1px solid #fca5a5',
+                          backgroundColor: '#fee2e2',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          flexShrink: 0
+                        }}
+                      >
+                        <X size={14} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {/* Message Textarea */}
                 <div style={{ position: 'relative', marginBottom: '1rem' }}>
                   <textarea
@@ -4038,7 +4307,7 @@ const AdminDashboard = () => {
                     <button
                       type="button"
                       onClick={handleSendSmsBroadcast}
-                      disabled={smsSending || !smsMessage.trim() || getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length === 0}
+                      disabled={smsSending || (!smsMessage.trim() && !smsMediaUrl && !smsAttachmentId && !smsAttachmentPreview) || getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length === 0}
                       className="btn-primary"
                       style={{
                         padding: '0.65rem 1.4rem',
@@ -4057,23 +4326,23 @@ const AdminDashboard = () => {
                         </>
                       ) : (
                         <>
-                          <Send size={16} /> Send Linq SMS ({getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length})
+                          <Send size={16} /> {(smsMediaUrl || smsAttachmentId || smsAttachmentPreview) ? 'Send Linq MMS + Picture' : 'Send Linq SMS'} ({getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length})
                         </>
                       )}
                     </button>
-                    {smsMessage && (
+                    {(smsMessage || smsAttachmentPreview || smsMediaUrl) && (
                       <button
                         type="button"
-                        onClick={() => setSmsMessage('')}
+                        onClick={() => { setSmsMessage(''); handleClearSmsAttachment(); }}
                         style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '0.85rem', cursor: 'pointer', padding: '0.5rem' }}
                       >
-                        Clear
+                        Clear All
                       </button>
                     )}
                   </div>
 
                   <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                    Powered by <strong>LinqApp Partner API v3</strong>
+                    Powered by <strong>LinqApp Partner API v3</strong> (SMS & MMS / iMessage)
                   </div>
                 </div>
 

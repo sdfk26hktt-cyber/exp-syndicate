@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { recipients, message, groupName, senderName } = req.body || {};
+  const { recipients, message, groupName, senderName, mediaUrl, attachmentId, attachments } = req.body || {};
 
   if (!message || !message.trim()) {
     return res.status(400).json({ error: 'Message content is required.' });
@@ -78,6 +78,25 @@ export default async function handler(req, res) {
       .replace(/{group}/gi, groupName || 'Syndicate')
       .replace(/{team}/gi, 'eXp Syndicate');
 
+    // Assemble message parts (Text + optional media attachment)
+    const messageParts = [{ type: 'text', value: personalizedMessage }];
+
+    if (attachmentId) {
+      messageParts.push({ type: 'media', attachment_id: attachmentId });
+    } else if (mediaUrl && typeof mediaUrl === 'string' && mediaUrl.trim()) {
+      messageParts.push({ type: 'media', url: mediaUrl.trim() });
+    } else if (Array.isArray(attachments) && attachments.length > 0) {
+      attachments.forEach((att) => {
+        if (typeof att === 'string' && att.trim()) {
+          messageParts.push({ type: 'media', url: att.trim() });
+        } else if (att && (att.attachmentId || att.attachment_id)) {
+          messageParts.push({ type: 'media', attachment_id: att.attachmentId || att.attachment_id });
+        } else if (att && att.url) {
+          messageParts.push({ type: 'media', url: att.url });
+        }
+      });
+    }
+
     try {
       const response = await fetch('https://api.linqapp.com/api/partner/v3/chats', {
         method: 'POST',
@@ -89,7 +108,7 @@ export default async function handler(req, res) {
           from: cleanFrom,
           to: [toPhone],
           message: {
-            parts: [{ type: 'text', value: personalizedMessage }]
+            parts: messageParts
           }
         })
       });
@@ -135,6 +154,7 @@ export default async function handler(req, res) {
         sent_count: sentCount,
         failed_count: failedCount,
         message_body: message,
+        has_attachment: !!(attachmentId || mediaUrl || (Array.isArray(attachments) && attachments.length > 0)),
         created_at: new Date().toISOString()
       }]).catch(() => {});
     }
