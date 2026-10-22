@@ -35,8 +35,10 @@ export default async function handler(req, res) {
 
   const { recipients, message, groupName, senderName, mediaUrl, attachmentId, attachments } = req.body || {};
 
-  if (!message || !message.trim()) {
-    return res.status(400).json({ error: 'Message content is required.' });
+  const hasMedia = !!(attachmentId || (typeof mediaUrl === 'string' && mediaUrl.trim()) || (Array.isArray(attachments) && attachments.length > 0));
+
+  if (!hasMedia && (!message || !message.trim())) {
+    return res.status(400).json({ error: 'Message content or a picture attachment is required.' });
   }
 
   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -66,20 +68,27 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Replace merge tags
-    let personalizedMessage = message
-      .replace(/{firstName}/gi, firstName)
-      .replace(/{name}/gi, fullName)
-      .replace(/{fullName}/gi, fullName)
-      .replace(/{role}/gi, rec.role || rec.group || 'Agent')
-      .replace(/{market}/gi, rec.market || 'In-Market')
-      .replace(/{city}/gi, rec.city || '')
-      .replace(/{state}/gi, rec.state || '')
-      .replace(/{group}/gi, groupName || 'Syndicate')
-      .replace(/{team}/gi, 'eXp Syndicate');
+    // Replace merge tags if message is provided
+    let personalizedMessage = '';
+    if (message && typeof message === 'string') {
+      personalizedMessage = message
+        .replace(/{firstName}/gi, firstName)
+        .replace(/{name}/gi, fullName)
+        .replace(/{fullName}/gi, fullName)
+        .replace(/{role}/gi, rec.role || rec.group || 'Agent')
+        .replace(/{market}/gi, rec.market || 'In-Market')
+        .replace(/{city}/gi, rec.city || '')
+        .replace(/{state}/gi, rec.state || '')
+        .replace(/{group}/gi, groupName || 'Syndicate')
+        .replace(/{team}/gi, 'eXp Syndicate');
+    }
 
     // Assemble message parts (Text + optional media attachment)
-    const messageParts = [{ type: 'text', value: personalizedMessage }];
+    const messageParts = [];
+
+    if (personalizedMessage && personalizedMessage.trim()) {
+      messageParts.push({ type: 'text', value: personalizedMessage.trim() });
+    }
 
     if (attachmentId) {
       messageParts.push({ type: 'media', attachment_id: attachmentId });
@@ -95,6 +104,17 @@ export default async function handler(req, res) {
           messageParts.push({ type: 'media', url: att.url });
         }
       });
+    }
+
+    if (messageParts.length === 0) {
+      failedCount++;
+      results.push({
+        recipient: fullName,
+        phone: toPhone,
+        status: 'failed',
+        error: 'No message content or valid attachment to send'
+      });
+      return;
     }
 
     try {

@@ -87,12 +87,10 @@ export const AuthProvider = ({ children }) => {
           if (matchedAgent.name) agentDisplayName = matchedAgent.name;
           if (matchedAgent.profile?.phone || matchedAgent.phone) agentPhone = matchedAgent.profile?.phone || matchedAgent.phone;
           
-          if (matchedAgent.status === 'admin' || matchedAgent.role === 'admin' || matchedAgent.profile?.role === 'Administrator') {
+          if (matchedAgent.status === 'admin' || (!matchedAgent.status && (matchedAgent.role === 'admin' || matchedAgent.profile?.role === 'Administrator'))) {
             role = 'admin';
-          } else if (matchedAgent.status === 'guest' || matchedAgent.role === 'guest' || matchedAgent.profile?.role === 'Guest') {
-            role = 'guest';
-          } else {
-            // Explicit active agent status in database (e.g. 'team_agent', 'flex_agent', 'onboarding')
+          } else if (matchedAgent.status === 'flex_agent' || matchedAgent.status === 'team_agent' || matchedAgent.status === 'onboarding' || matchedAgent.status === 'active') {
+            // Explicit active agent status in database (e.g. 'team_agent', 'flex_agent', 'onboarding') always takes precedence over legacy guest profile tags
             role = 'agent';
 
             // Self-heal: update Supabase Auth user metadata so it never stays 'guest'
@@ -101,6 +99,10 @@ export const AuthProvider = ({ children }) => {
                 data: { role: 'agent' }
               }).catch(() => {});
             }
+          } else if (matchedAgent.status === 'guest' || (!matchedAgent.status && (matchedAgent.role === 'guest' || matchedAgent.profile?.role === 'Guest'))) {
+            role = 'guest';
+          } else {
+            role = 'agent';
           }
         }
       } catch (err) {
@@ -552,9 +554,10 @@ export const AuthProvider = ({ children }) => {
     const agentPhone = agentProfile.phone || agentProfile.profile?.phone || '';
 
     // Create mock agent user from profile
+    const isGuest = agentProfile.status === 'guest' || (!agentProfile.status && (agentProfile.role === 'guest' || agentProfile.profile?.role === 'Guest'));
     const emulatedUser = {
       id: agentProfile.id || agentEmail,
-      role: agentProfile.role === 'guest' || agentProfile.status === 'guest' ? 'guest' : 'agent',
+      role: isGuest ? 'guest' : 'agent',
       name: agentName,
       email: agentEmail,
       phone: agentPhone

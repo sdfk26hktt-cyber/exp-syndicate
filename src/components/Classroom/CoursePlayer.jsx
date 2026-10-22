@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -17,14 +17,14 @@ import {
   ChevronUp, 
   FileText, 
   FileSpreadsheet, 
-  Check,
-  Lock,
-  Layers
+  Check, 
+  Lock, 
+  Layers 
 } from 'lucide-react';
 import { useAgent } from '../../context/AgentContext';
 import { useAuth } from '../../context/AuthContext';
 import LevelBadge from '../Gamification/LevelBadge';
-import { parseEmbedMedia } from '../../utils/mediaEmbed';
+import { parseEmbedMedia, resolveMediaUrl } from '../../utils/mediaEmbed';
 
 const CoursePlayer = () => {
   const { courseId, lessonId } = useParams();
@@ -187,6 +187,26 @@ const CoursePlayer = () => {
 
   // Parse video, Canva presentation, Tango.ai walkthrough, or iframe embed media
   const embedMedia = parseEmbedMedia(currentLesson?.videoUrl);
+  const [asyncEmbedUrl, setAsyncEmbedUrl] = useState(null);
+  const [isResolvingMedia, setIsResolvingMedia] = useState(false);
+
+  useEffect(() => {
+    setAsyncEmbedUrl(null);
+    if (currentLesson?.videoUrl) {
+      const parsed = parseEmbedMedia(currentLesson.videoUrl);
+      if (parsed.needsResolution) {
+        setIsResolvingMedia(true);
+        resolveMediaUrl(currentLesson.videoUrl)
+          .then(url => {
+            if (url) setAsyncEmbedUrl(url);
+          })
+          .catch(err => console.warn('[CoursePlayer] Could not resolve media:', err))
+          .finally(() => setIsResolvingMedia(false));
+      }
+    }
+  }, [currentLesson?.id, currentLesson?.videoUrl]);
+
+  const activeEmbedUrl = asyncEmbedUrl || embedMedia.embedUrl;
 
   return (
     <div className="animate-fade-in course-player-container">
@@ -471,7 +491,7 @@ const CoursePlayer = () => {
 
           {/* Training Media / Video / Presentation / Walkthrough Box */}
           <div style={styles.videoCard}>
-            {embedMedia && embedMedia.embedUrl ? (
+            {embedMedia && (activeEmbedUrl || isResolvingMedia) ? (
               <div>
                 {/* Media Type & Quick Action Header */}
                 <div style={{
@@ -523,16 +543,31 @@ const CoursePlayer = () => {
                     onMouseEnter={(e) => { e.currentTarget.style.color = 'white'; e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.12)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; }}
                   >
-                    <span>Open Full Screen</span>
+                    <span>{embedMedia.type === 'canva' ? 'Open in Canva' : 'Open Full Screen'}</span>
                     <ExternalLink size={12} />
                   </a>
                 </div>
 
                 {/* Media Embed Container */}
-                {embedMedia.isDirectVideo ? (
+                {isResolvingMedia ? (
+                  <div style={{
+                    ...styles.videoResponsiveWrapper,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: '380px',
+                    backgroundColor: '#0f172a',
+                    color: '#94a3b8',
+                    gap: '0.75rem'
+                  }}>
+                    <Sparkles size={28} color="#7d2ae8" className="animate-spin" />
+                    <span style={{ fontSize: '0.85rem' }}>Loading Canva presentation...</span>
+                  </div>
+                ) : embedMedia.isDirectVideo ? (
                   <div style={styles.videoResponsiveWrapper}>
                     <video
-                      src={embedMedia.embedUrl}
+                      src={activeEmbedUrl}
                       controls
                       playsInline
                       style={styles.iframe}
@@ -548,10 +583,11 @@ const CoursePlayer = () => {
                     } : {})
                   }}>
                     <iframe
-                      src={embedMedia.embedUrl}
+                      src={activeEmbedUrl}
                       title={currentLesson?.title || 'Training Content'}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
                       allowFullScreen
+                      loading="lazy"
                       style={styles.iframe}
                     />
                   </div>

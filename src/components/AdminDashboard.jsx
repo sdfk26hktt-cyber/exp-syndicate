@@ -293,6 +293,83 @@ const AdminDashboard = () => {
   const [editAgentEmergencyPhone, setEditAgentEmergencyPhone] = useState('');
   const [isSavingAgentEdit, setIsSavingAgentEdit] = useState(false);
   const [editAgentError, setEditAgentError] = useState('');
+
+  // Set Password Modal State
+  const [setPasswordAgent, setPasswordAgent] = useState(null);
+  const [directPassword, setDirectPassword] = useState('Welcome123!');
+  const [showDirectPassword, setShowDirectPassword] = useState(false);
+  const [autoConfirmEmail, setAutoConfirmEmail] = useState(true);
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [setPasswordError, setPasswordError] = useState('');
+  const [setPasswordSuccess, setPasswordSuccess] = useState('');
+
+  const openSetPasswordModal = (agent) => {
+    setPasswordAgent(agent);
+    setDirectPassword('Welcome123!');
+    setShowDirectPassword(false);
+    setAutoConfirmEmail(true);
+    setPasswordError('');
+    setPasswordSuccess('');
+  };
+
+  const generateDirectPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+    let result = '';
+    for (let i = 0; i < 12; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setDirectPassword(result);
+  };
+
+  const handleSetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!setPasswordAgent) return;
+
+    const email = (setPasswordAgent.id || setPasswordAgent.profile?.email || '').toLowerCase().trim();
+    if (!email) {
+      setPasswordError('Agent email address is missing.');
+      return;
+    }
+
+    if (!directPassword || directPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setIsSettingPassword(true);
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    try {
+      const response = await fetch('/api/admin/set-agent-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password: directPassword,
+          autoConfirm: autoConfirmEmail
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to set password.');
+      }
+
+      setPasswordSuccess(data.message || `Password set successfully for ${email}`);
+      setActionSuccessMsg(`Direct password set for ${setPasswordAgent.name || email}`);
+      setTimeout(() => setActionSuccessMsg(''), 5000);
+      setTimeout(() => {
+        setPasswordAgent(null);
+        setPasswordSuccess('');
+      }, 1600);
+    } catch (err) {
+      setPasswordError(err.message || 'An error occurred while updating the password.');
+    } finally {
+      setIsSettingPassword(false);
+    }
+  };
   
   const handleEditAgentSubmit = async (e) => {
     e.preventDefault();
@@ -309,7 +386,16 @@ const AdminDashboard = () => {
     setIsSavingAgentEdit(true);
     setEditAgentError('');
 
+    const friendlyRole = editAgentStatus === 'guest' ? 'Guest'
+      : editAgentStatus === 'admin' ? 'Administrator'
+      : editAgentStatus === 'flex_agent' ? 'Flex Agent'
+      : editAgentStatus === 'team_agent' ? 'Team Agent'
+      : editAgentStatus === 'onboarding' ? 'Onboarding Agent'
+      : 'Agent';
+
     const profileUpdates = {
+      ...(editingAgent.profile || {}),
+      role: friendlyRole,
       phone: editAgentPhone,
       altPhone: editAgentAltPhone,
       address: editAgentAddress,
@@ -333,7 +419,7 @@ const AdminDashboard = () => {
         setActionSuccessMsg(`Successfully updated profile and changed login email to ${cleanNewEmail}`);
       } else {
         await adminUpdateAgent(editingAgent.id, editAgentName, profileUpdates);
-        if (editAgentStatus && editAgentStatus !== editingAgent.status) {
+        if (editAgentStatus) {
           await updateAgentStatus(editingAgent.id, editAgentStatus);
         }
         setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
@@ -492,6 +578,7 @@ const AdminDashboard = () => {
   const [smsUploadingMedia, setSmsUploadingMedia] = useState(false);
   const [smsShowUrlInput, setSmsShowUrlInput] = useState(false);
   const [smsTempUrlInput, setSmsTempUrlInput] = useState('');
+  const [smsUploadError, setSmsUploadError] = useState('');
 
   // Helper to compute target recipients for LinqApp SMS with removals and manual additions applied
   const getSmsRecipients = () => {
@@ -525,14 +612,14 @@ const AdminDashboard = () => {
       }
     } else if (smsTargetType === 'group') {
       baseList = (agents || []).filter(a => {
-        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
         const subrole = a.profile?.team_subrole || 'team_agent';
-        if (smsSelectedGroup === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
+        if (smsSelectedGroup === 'admin') return s === 'admin';
         if (smsSelectedGroup === 'flex_agent') return s === 'flex_agent';
         if (smsSelectedGroup === 'team_agent') return s === 'team_agent' && subrole !== 'showing_partner';
         if (smsSelectedGroup === 'showing_partner') return s === 'team_agent' && subrole === 'showing_partner';
         if (smsSelectedGroup === 'team_all') return s === 'team_agent';
-        if (smsSelectedGroup === 'guest') return s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest';
+        if (smsSelectedGroup === 'guest') return s === 'guest';
         if (smsSelectedGroup === 'onboarding') return s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest');
         return false;
       }).map(a => ({
@@ -566,7 +653,7 @@ const AdminDashboard = () => {
       }));
     } else if (smsTargetType === 'matrix') {
       baseList = (agents || []).filter(a => {
-        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
         const subrole = a.profile?.team_subrole || 'team_agent';
         const market = getAgentMarket(a);
 
@@ -577,8 +664,8 @@ const AdminDashboard = () => {
         else if (smsMatrixRole === 'team_all') roleMatch = (s === 'team_agent');
         else if (smsMatrixRole === 'flex_agent') roleMatch = (s === 'flex_agent');
         else if (smsMatrixRole === 'onboarding') roleMatch = (s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest'));
-        else if (smsMatrixRole === 'guest') roleMatch = (s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest');
-        else if (smsMatrixRole === 'admin') roleMatch = (s === 'admin' || a.profile?.role === 'Administrator');
+        else if (smsMatrixRole === 'guest') roleMatch = (s === 'guest');
+        else if (smsMatrixRole === 'admin') roleMatch = (s === 'admin');
 
         // Market check
         let marketMatch = true;
@@ -746,6 +833,55 @@ const AdminDashboard = () => {
     setTimeout(() => setActionSuccessMsg(''), 3000);
   };
 
+  // Utility to compress/optimize image client-side before uploading and broadcasting via Linq
+  const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) => {
+    return new Promise((resolve, reject) => {
+      if (!file.type || !file.type.startsWith('image/') || file.type.includes('gif')) {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve({ dataUrl: e.target.result, size: file.size, type: file.type || 'image/jpeg' });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const outType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const dataUrl = canvas.toDataURL(outType, quality);
+          const base64Len = dataUrl.split(',')[1]?.length || 0;
+          const approxBytes = Math.round(base64Len * 0.75);
+
+          resolve({
+            dataUrl,
+            size: approxBytes,
+            type: outType
+          });
+        };
+        img.onerror = () => {
+          resolve({ dataUrl: e.target.result, size: file.size, type: file.type });
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Handle local file selection and upload to LinqApp attachments
   const handleSmsFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -756,44 +892,49 @@ const AdminDashboard = () => {
       return;
     }
 
-    // Generate local preview immediately
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result;
+    setSmsUploadingMedia(true);
+    setSmsUploadError('');
+    setSmsAttachmentName(file.name);
+    setSmsAttachmentSize(file.size);
+
+    try {
+      // Compress image client-side to keep under Vercel & cellular MMS carrier limits
+      const { dataUrl, size: processedSize, type: mimeType } = await compressImage(file, 1600, 1600, 0.85);
       setSmsAttachmentPreview(dataUrl);
-      setSmsAttachmentName(file.name);
-      setSmsAttachmentSize(file.size);
-      setSmsUploadingMedia(true);
+      setSmsAttachmentSize(processedSize);
 
-      try {
-        const res = await fetch('/api/messages/upload-attachment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type || 'image/jpeg',
-            dataUrl: dataUrl
-          })
-        });
+      const res = await fetch('/api/messages/upload-attachment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: mimeType || file.type || 'image/jpeg',
+          dataUrl: dataUrl
+        })
+      });
 
-        const data = await res.json();
-        if (res.ok && data.attachment_id) {
-          setSmsAttachmentId(data.attachment_id);
-          setSmsMediaUrl(data.download_url || '');
-          setActionSuccessMsg(`📎 Attached "${file.name}" for MMS / iMessage broadcast`);
-          setTimeout(() => setActionSuccessMsg(''), 3000);
-        } else {
-          console.warn('Upload API notice:', data.error);
-          setActionSuccessMsg(`📎 Preview loaded for "${file.name}"`);
-          setTimeout(() => setActionSuccessMsg(''), 3000);
-        }
-      } catch (err) {
-        console.error('Attachment upload error:', err);
-      } finally {
-        setSmsUploadingMedia(false);
+      const data = await res.json();
+      if (res.ok && data.attachment_id) {
+        setSmsAttachmentId(data.attachment_id);
+        setSmsMediaUrl(data.download_url || '');
+        setSmsUploadError('');
+        setActionSuccessMsg(`📎 Attached "${file.name}" for MMS & iMessage broadcast`);
+        setTimeout(() => setActionSuccessMsg(''), 4000);
+      } else {
+        const errorMsg = data?.error || `Upload failed (Status ${res.status})`;
+        console.error('Attachment upload failed:', errorMsg);
+        setSmsAttachmentId('');
+        setSmsMediaUrl('');
+        setSmsUploadError(errorMsg);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Attachment upload error:', err);
+      setSmsAttachmentId('');
+      setSmsMediaUrl('');
+      setSmsUploadError(err.message || 'Network error during upload');
+    } finally {
+      setSmsUploadingMedia(false);
+    }
     e.target.value = '';
   };
 
@@ -813,6 +954,7 @@ const AdminDashboard = () => {
     setSmsAttachmentSize(0);
     setSmsShowUrlInput(false);
     setSmsTempUrlInput('');
+    setSmsUploadError('');
     setActionSuccessMsg(`📎 Attached image URL: ${filename}`);
     setTimeout(() => setActionSuccessMsg(''), 3000);
   };
@@ -825,6 +967,7 @@ const AdminDashboard = () => {
     setSmsAttachmentSize(0);
     setSmsShowUrlInput(false);
     setSmsTempUrlInput('');
+    setSmsUploadError('');
   };
 
   const handleSendSmsBroadcast = async (e) => {
@@ -832,6 +975,17 @@ const AdminDashboard = () => {
     if (!smsMessage.trim() && !smsMediaUrl && !smsAttachmentId && !smsAttachmentPreview) {
       alert('Please enter a message or attach a picture to send.');
       return;
+    }
+
+    if (smsAttachmentPreview && !smsAttachmentId && !smsMediaUrl) {
+      if (smsUploadingMedia) {
+        alert('Please wait for the picture attachment to finish uploading before sending.');
+        return;
+      }
+      if (smsUploadError) {
+        alert(`Picture upload failed: ${smsUploadError}. Please re-select or clear the attachment before sending.`);
+        return;
+      }
     }
 
     const allRecipients = getSmsRecipients();
@@ -863,7 +1017,7 @@ const AdminDashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipients: validRecipients,
-          message: smsMessage || ' ',
+          message: smsMessage || '',
           groupName: smsTargetType === 'all' ? 'Entire Directory' : smsTargetType === 'group' ? smsSelectedGroup : smsTargetType === 'market' ? smsSelectedMarket : 'Segmented Broadcast',
           senderName: userName,
           mediaUrl: smsMediaUrl || undefined,
@@ -1604,15 +1758,15 @@ const AdminDashboard = () => {
                       : 'Guest Users';
                     const groupAgents = agents
                       .filter(a => {
-                        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+                        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
                         const subrole = a.profile?.team_subrole || 'team_agent';
                         const market = getAgentMarket(a);
 
-                        const matchesGroup = groupKey === 'admin' ? (s === 'admin' || a.profile?.role === 'Administrator')
+                        const matchesGroup = groupKey === 'admin' ? s === 'admin'
                           : groupKey === 'flex_agent' ? s === 'flex_agent'
                           : groupKey === 'team_agent' ? s === 'team_agent'
-                          : groupKey === 'guest' ? (s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest')
-                          : (s !== 'flex_agent' && s !== 'team_agent' && s !== 'admin' && s !== 'guest' && a.role !== 'guest' && a.profile?.role !== 'Guest' && a.profile?.role !== 'Administrator');
+                          : groupKey === 'guest' ? s === 'guest'
+                          : (s === 'onboarding' || (!['admin', 'flex_agent', 'team_agent', 'guest'].includes(s)));
                         
                         if (!matchesGroup) return false;
 
@@ -1628,9 +1782,9 @@ const AdminDashboard = () => {
                         if (directoryRoleFilter === 'showing_partner' && (s !== 'team_agent' || subrole !== 'showing_partner')) return false;
                         if (directoryRoleFilter === 'team_all' && s !== 'team_agent') return false;
                         if (directoryRoleFilter === 'flex_agent' && s !== 'flex_agent') return false;
-                        if (directoryRoleFilter === 'onboarding' && (s !== 'onboarding' && (s === 'admin' || s === 'flex_agent' || s === 'team_agent' || s === 'guest'))) return false;
-                        if (directoryRoleFilter === 'guest' && s !== 'guest' && a.role !== 'guest' && a.profile?.role !== 'Guest') return false;
-                        if (directoryRoleFilter === 'admin' && s !== 'admin' && a.profile?.role !== 'Administrator') return false;
+                        if (directoryRoleFilter === 'onboarding' && s !== 'onboarding') return false;
+                        if (directoryRoleFilter === 'guest' && s !== 'guest') return false;
+                        if (directoryRoleFilter === 'admin' && s !== 'admin') return false;
 
                         if (!agentSearchQuery.trim()) return true;
                         const q = agentSearchQuery.toLowerCase().trim();
@@ -1673,13 +1827,13 @@ const AdminDashboard = () => {
                             <tr key={a.id} style={styles.roleTr}>
                               <td style={styles.roleTd}>
                                 <div style={{display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap'}}>
-                                  <div style={{width: '32px', height: '32px', borderRadius: '50%', backgroundColor: a.status === 'guest' || a.role === 'guest' ? '#64748b' : 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', flexShrink: 0}}>
+                                  <div style={{width: '32px', height: '32px', borderRadius: '50%', backgroundColor: a.status === 'guest' || (!a.status && (a.role === 'guest' || a.profile?.role === 'Guest')) ? '#64748b' : 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', flexShrink: 0}}>
                                     {(a.name || '?').charAt(0)}
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                       <span style={{ fontWeight: '600', color: 'var(--color-dark-navy)' }}>{a.name || 'Unknown Agent'}</span>
-                                      {a.status === 'guest' || a.role === 'guest' ? (
+                                      {a.status === 'guest' || (!a.status && (a.role === 'guest' || a.profile?.role === 'Guest')) ? (
                                         <span style={{ fontSize: '0.7rem', backgroundColor: '#e2e8f0', color: '#475569', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
                                           GUEST
                                         </span>
@@ -1725,7 +1879,7 @@ const AdminDashboard = () => {
                               </td>
                               <td style={styles.roleTd}>
                                 <select 
-                                  value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'onboarding')} 
+                                  value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding')} 
                                   onChange={(e) => updateAgentStatus(a.id, e.target.value)}
                                   style={styles.roleSelect}
                                   onClick={(e) => e.stopPropagation()}
@@ -1771,7 +1925,7 @@ const AdminDashboard = () => {
                                       setEditAgentMarket(a.profile?.market || getAgentMarket(a));
                                       setEditAgentCity(a.profile?.city || 'El Paso');
                                       setEditAgentState(a.profile?.state || 'TX');
-                                      setEditAgentStatus(a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' ? 'guest' : 'onboarding'));
+                                      setEditAgentStatus(a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding'));
                                       setEditAgentTeamSubrole(a.profile?.team_subrole || 'team_agent');
                                       setEditAgentPlaybookId(a.profile?.playbook_id || '');
                                       setEditAgentLicense(a.profile?.licenseNumber || '');
@@ -1808,6 +1962,17 @@ const AdminDashboard = () => {
                                     title="Send Password Reset Email"
                                   >
                                     <KeyRound size={14} /> Reset Pass
+                                  </button>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openSetPasswordModal(a);
+                                    }}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', gap: '0.25rem', alignItems: 'center', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                                    title="Directly Set Agent Password (Bypasses email verification)"
+                                  >
+                                    <Lock size={14} /> Set Pass
                                   </button>
                                   <button 
                                     onClick={(e) => {
@@ -2110,6 +2275,159 @@ const AdminDashboard = () => {
                       <button type="button" className="btn-secondary" onClick={() => setEditingAgent(null)} disabled={isSavingAgentEdit}>Cancel</button>
                       <button type="submit" className="btn-primary" disabled={isSavingAgentEdit}>
                         {isSavingAgentEdit ? 'Saving Changes...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Set Agent Password Modal */}
+            {setPasswordAgent && (
+              <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 2000,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '1rem'
+              }}>
+                <div className="card" style={{ width: '100%', maxWidth: '480px', backgroundColor: 'var(--color-white)', position: 'relative', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)' }}>
+                  <button 
+                    onClick={() => setPasswordAgent(null)}
+                    style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }}
+                    title="Close"
+                  >
+                    <X size={20} color="var(--color-text-muted)" />
+                  </button>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary)' }}>
+                      <Lock size={18} />
+                    </div>
+                    <h2 style={{ margin: 0, color: 'var(--color-dark-navy)', fontSize: '1.25rem' }}>Direct Password Set</h2>
+                  </div>
+                  
+                  <p className="text-xs text-muted mb-4" style={{ lineHeight: '1.4' }}>
+                    Directly updates and confirms login credentials in Supabase Auth. Bypasses corporate email filters (such as CCM / Microsoft Defender) that block reset emails.
+                  </p>
+
+                  <div style={{ padding: '0.75rem', backgroundColor: '#F8FAFC', borderRadius: 'var(--border-radius-sm)', border: '1px solid #E2E8F0', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>AGENT</span>
+                      <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', backgroundColor: '#EEF2FF', color: 'var(--color-primary)', borderRadius: '9999px', fontWeight: 600 }}>
+                        {setPasswordAgent.status ? setPasswordAgent.status.replace('_', ' ').toUpperCase() : 'AGENT'}
+                      </span>
+                    </div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)', fontSize: '0.95rem' }}>
+                      {setPasswordAgent.name || setPasswordAgent.id}
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+                      {setPasswordAgent.id}
+                    </div>
+                  </div>
+
+                  {setPasswordError && (
+                    <div style={{ padding: '0.65rem 0.85rem', backgroundColor: '#FEE2E2', border: '1px solid #F87171', borderRadius: 'var(--border-radius-sm)', color: '#991B1B', fontSize: '0.82rem', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                      <span>{setPasswordError}</span>
+                    </div>
+                  )}
+
+                  {setPasswordSuccess && (
+                    <div style={{ padding: '0.65rem 0.85rem', backgroundColor: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 'var(--border-radius-sm)', color: '#166534', fontSize: '0.82rem', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                      <span>{setPasswordSuccess}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSetPasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                        <label style={{ ...styles.label, marginBottom: 0 }}>New Password</label>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => setDirectPassword('Welcome123!')}
+                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--color-primary)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            Default (Welcome123!)
+                          </button>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>•</span>
+                          <button
+                            type="button"
+                            onClick={generateDirectPassword}
+                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--color-primary)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            Random
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showDirectPassword ? 'text' : 'password'}
+                          value={directPassword}
+                          onChange={(e) => setDirectPassword(e.target.value)}
+                          placeholder="Min 6 characters (e.g. Welcome123!)"
+                          style={{ ...styles.input, paddingRight: '2.5rem' }}
+                          required
+                          minLength={6}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowDirectPassword(!showDirectPassword)}
+                          style={{
+                            position: 'absolute',
+                            right: '0.65rem',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--color-text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          title={showDirectPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showDirectPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '0.25rem', marginBottom: 0 }}>
+                        The agent will use this password on the login screen.
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        id="autoConfirmCheck"
+                        checked={autoConfirmEmail}
+                        onChange={(e) => setAutoConfirmEmail(e.target.checked)}
+                        style={{ cursor: 'pointer', width: 16, height: 16 }}
+                      />
+                      <label htmlFor="autoConfirmCheck" style={{ fontSize: '0.82rem', color: 'var(--color-dark-navy)', cursor: 'pointer', margin: 0 }}>
+                        Auto-confirm email address in Supabase Auth (unblocks instant login)
+                      </label>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #E2E8F0' }}>
+                      <button 
+                        type="button" 
+                        className="btn-secondary" 
+                        onClick={() => setPasswordAgent(null)} 
+                        disabled={isSettingPassword}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="btn-primary" 
+                        disabled={isSettingPassword || !directPassword || directPassword.length < 6}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <Lock size={14} />
+                        {isSettingPassword ? 'Saving Password...' : 'Save & Set Password'}
                       </button>
                     </div>
                   </form>
@@ -3459,14 +3777,14 @@ const AdminDashboard = () => {
                         { id: 'admin', label: '🛡️ Administrators' }
                       ].map(g => {
                         const count = (agents || []).filter(a => {
-                          const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : a.role === 'guest' || a.profile?.role === 'Guest' ? 'guest' : 'onboarding');
+                          const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
                           const subrole = a.profile?.team_subrole || 'team_agent';
-                          if (g.id === 'admin') return s === 'admin' || a.profile?.role === 'Administrator';
+                          if (g.id === 'admin') return s === 'admin';
                           if (g.id === 'flex_agent') return s === 'flex_agent';
                           if (g.id === 'team_agent') return s === 'team_agent' && subrole !== 'showing_partner';
                           if (g.id === 'showing_partner') return s === 'team_agent' && subrole === 'showing_partner';
                           if (g.id === 'team_all') return s === 'team_agent';
-                          if (g.id === 'guest') return s === 'guest' || a.role === 'guest' || a.profile?.role === 'Guest';
+                          if (g.id === 'guest') return s === 'guest';
                           return s === 'onboarding' || (!a.status && s !== 'admin' && s !== 'flex_agent' && s !== 'team_agent' && s !== 'guest');
                         }).length;
 
@@ -4201,15 +4519,15 @@ const AdminDashboard = () => {
                   )}
 
                   {/* Active Attachment Card Preview */}
-                  {(smsAttachmentPreview || smsMediaUrl || smsAttachmentName || smsUploadingMedia) && (
+                  {(smsAttachmentPreview || smsMediaUrl || smsAttachmentName || smsUploadingMedia || smsUploadError) && (
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '0.6rem 0.85rem',
                       borderRadius: '8px',
-                      backgroundColor: '#eff6ff',
-                      border: '1px solid #bfdbfe',
+                      backgroundColor: smsUploadError ? '#fef2f2' : '#eff6ff',
+                      border: smsUploadError ? '1px solid #fecaca' : '1px solid #bfdbfe',
                       marginBottom: '0.75rem',
                       gap: '0.75rem'
                     }}>
@@ -4226,19 +4544,29 @@ const AdminDashboard = () => {
                           </div>
                         )}
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#1e3a8a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontWeight: '700', fontSize: '0.85rem', color: smsUploadError ? '#991b1b' : '#1e3a8a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {smsAttachmentName || 'Attached Media'}
                           </div>
-                          <div style={{ fontSize: '0.74rem', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+                          <div style={{ fontSize: '0.74rem', color: smsUploadError ? '#dc2626' : '#3b82f6', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
                             {smsUploadingMedia ? (
                               <>
                                 <RefreshCw size={12} className="animate-spin" /> Uploading to Linq CDN...
                               </>
-                            ) : (
+                            ) : smsUploadError ? (
+                              <>
+                                <AlertCircle size={12} color="#dc2626" />
+                                <span>Upload failed: {smsUploadError}</span>
+                              </>
+                            ) : (smsAttachmentId || smsMediaUrl) ? (
                               <>
                                 <CheckCircle2 size={12} color="#10b981" />
                                 {smsAttachmentSize > 0 ? `${(smsAttachmentSize / (1024 * 1024)).toFixed(2)} MB • ` : ''}
                                 MMS & iMessage Attachment Ready
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle size={12} color="#f59e0b" />
+                                <span>Processing attachment...</span>
                               </>
                             )}
                           </div>
@@ -4307,7 +4635,7 @@ const AdminDashboard = () => {
                     <button
                       type="button"
                       onClick={handleSendSmsBroadcast}
-                      disabled={smsSending || (!smsMessage.trim() && !smsMediaUrl && !smsAttachmentId && !smsAttachmentPreview) || getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length === 0}
+                      disabled={smsSending || smsUploadingMedia || !!smsUploadError || (!smsMessage.trim() && !smsMediaUrl && !smsAttachmentId) || getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length === 0}
                       className="btn-primary"
                       style={{
                         padding: '0.65rem 1.4rem',
@@ -4316,17 +4644,21 @@ const AdminDashboard = () => {
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '0.5rem',
-                        backgroundColor: smsSending ? '#94a3b8' : 'var(--color-primary)',
-                        cursor: smsSending ? 'not-allowed' : 'pointer'
+                        backgroundColor: (smsSending || smsUploadingMedia || !!smsUploadError) ? '#94a3b8' : 'var(--color-primary)',
+                        cursor: (smsSending || smsUploadingMedia || !!smsUploadError) ? 'not-allowed' : 'pointer'
                       }}
                     >
                       {smsSending ? (
                         <>
                           <RefreshCw size={16} className="animate-spin" /> Dispatching via LinqApp...
                         </>
+                      ) : smsUploadingMedia ? (
+                        <>
+                          <RefreshCw size={16} className="animate-spin" /> Uploading Picture...
+                        </>
                       ) : (
                         <>
-                          <Send size={16} /> {(smsMediaUrl || smsAttachmentId || smsAttachmentPreview) ? 'Send Linq MMS + Picture' : 'Send Linq SMS'} ({getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length})
+                          <Send size={16} /> {(smsMediaUrl || smsAttachmentId) ? 'Send Linq MMS + Picture' : 'Send Linq SMS'} ({getSmsRecipients().filter(r => r.phone && r.phone.replace(/\D/g, '').length >= 10).length})
                         </>
                       )}
                     </button>

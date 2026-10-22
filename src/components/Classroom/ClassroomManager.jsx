@@ -30,7 +30,7 @@ import {
 import { useAgent } from '../../context/AgentContext';
 import { useCommunity } from '../../context/CommunityContext';
 import LevelBadge from '../Gamification/LevelBadge';
-import { parseEmbedMedia, extractIframeSrc } from '../../utils/mediaEmbed';
+import { parseEmbedMedia, extractIframeSrc, resolveMediaUrl, toCanvaEmbedUrl } from '../../utils/mediaEmbed';
 
 const ClassroomManager = () => {
   const { courses, updateGlobalCourses, gamificationSettings } = useAgent();
@@ -39,6 +39,7 @@ const ClassroomManager = () => {
   const [selectedCourseIndex, setSelectedCourseIndex] = useState(0);
   const [expandedModuleIndex, setExpandedModuleIndex] = useState(0);
   const [previewLessonId, setPreviewLessonId] = useState(null);
+  const [resolvingLessonId, setResolvingLessonId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -835,9 +836,24 @@ const ClassroomManager = () => {
                                   <input
                                     type="text"
                                     value={lesson.videoUrl || ''}
-                                    onChange={(e) => {
+                                    onChange={async (e) => {
                                       const clean = extractIframeSrc(e.target.value);
                                       updateLessonField(mIdx, lIdx, 'videoUrl', clean);
+
+                                      // Auto-detect Canva links and convert/resolve to embed format
+                                      const parsed = parseEmbedMedia(clean);
+                                      if (parsed.type === 'canva') {
+                                        if (parsed.embedUrl && parsed.embedUrl !== clean) {
+                                          updateLessonField(mIdx, lIdx, 'videoUrl', parsed.embedUrl);
+                                        } else if (parsed.needsResolution) {
+                                          setResolvingLessonId(lesson.id);
+                                          const resolved = await resolveMediaUrl(clean);
+                                          setResolvingLessonId(null);
+                                          if (resolved) {
+                                            updateLessonField(mIdx, lIdx, 'videoUrl', resolved);
+                                          }
+                                        }
+                                      }
                                     }}
                                     style={{ ...styles.input, backgroundColor: 'white' }}
                                     placeholder="Paste Canva presentation link, Tango.ai walkthrough, YouTube, Loom, Google Slides, or <iframe> code..."
@@ -856,19 +872,62 @@ const ClassroomManager = () => {
                                   }
 
                                   const isPreviewing = previewLessonId === lesson.id;
+                                  const isResolving = resolvingLessonId === lesson.id;
 
                                   return (
                                     <div style={{ marginTop: '0.5rem' }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '4px', backgroundColor: `${mediaInfo.badgeColor}15`, color: mediaInfo.badgeColor }}>
                                           <span>{mediaInfo.badgeLabel || 'Detected Media'}</span>
-                                          {mediaInfo.embedUrl && <span style={{ opacity: 0.8, fontSize: '0.7rem' }}>• Player Ready</span>}
+                                          {isResolving ? (
+                                            <span style={{ opacity: 0.9, fontSize: '0.7rem' }}>• Resolving link...</span>
+                                          ) : mediaInfo.embedUrl ? (
+                                            <span style={{ opacity: 0.8, fontSize: '0.7rem' }}>• Player Ready</span>
+                                          ) : mediaInfo.needsResolution ? (
+                                            <span style={{ opacity: 0.9, fontSize: '0.7rem' }}>• Shortlink Detected</span>
+                                          ) : null}
                                         </div>
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                          {mediaInfo.needsResolution && !isResolving && (
+                                            <button
+                                              type="button"
+                                              onClick={async () => {
+                                                setResolvingLessonId(lesson.id);
+                                                const resolved = await resolveMediaUrl(lesson.videoUrl);
+                                                setResolvingLessonId(null);
+                                                if (resolved) {
+                                                  updateLessonField(mIdx, lIdx, 'videoUrl', resolved);
+                                                }
+                                              }}
+                                              style={{
+                                                fontSize: '0.72rem',
+                                                backgroundColor: '#f3e8ff',
+                                                color: '#7e22ce',
+                                                border: '1px solid #d8b4fe',
+                                                borderRadius: '5px',
+                                                padding: '0.25rem 0.55rem',
+                                                cursor: 'pointer',
+                                                fontWeight: 600
+                                              }}
+                                            >
+                                              Convert to Canva Embed
+                                            </button>
+                                          )}
+
                                           <button
                                             type="button"
-                                            onClick={() => setPreviewLessonId(isPreviewing ? null : lesson.id)}
+                                            onClick={async () => {
+                                              if (!isPreviewing && mediaInfo.needsResolution) {
+                                                setResolvingLessonId(lesson.id);
+                                                const resolved = await resolveMediaUrl(lesson.videoUrl);
+                                                setResolvingLessonId(null);
+                                                if (resolved) {
+                                                  updateLessonField(mIdx, lIdx, 'videoUrl', resolved);
+                                                }
+                                              }
+                                              setPreviewLessonId(isPreviewing ? null : lesson.id);
+                                            }}
                                             style={{
                                               fontSize: '0.75rem',
                                               display: 'inline-flex',
@@ -906,7 +965,7 @@ const ClassroomManager = () => {
                                       </div>
 
                                       {/* Expanded Live Player Preview Drawer */}
-                                      {isPreviewing && mediaInfo.embedUrl && (
+                                      {isPreviewing && (
                                         <div style={{ marginTop: '0.65rem', backgroundColor: '#0f172a', borderRadius: '8px', overflow: 'hidden', border: '1px solid #334155', padding: '0.5rem' }}>
                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.5rem', marginBottom: '0.4rem', borderBottom: '1px solid #1e293b' }}>
                                             <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>
@@ -919,20 +978,33 @@ const ClassroomManager = () => {
                                           <div style={{
                                             position: 'relative',
                                             width: '100%',
-                                            height: mediaInfo.type === 'tango' ? '500px' : '340px',
+                                            height: mediaInfo.type === 'tango' ? '500px' : '360px',
                                             borderRadius: '6px',
                                             overflow: 'hidden'
                                           }}>
-                                            {mediaInfo.isDirectVideo ? (
+                                            {isResolving ? (
+                                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', gap: '0.5rem' }}>
+                                                <Sparkles size={24} color="#7d2ae8" />
+                                                <span style={{ fontSize: '0.8rem' }}>Resolving Canva shortlink...</span>
+                                              </div>
+                                            ) : mediaInfo.isDirectVideo ? (
                                               <video src={mediaInfo.embedUrl} controls style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                            ) : (
+                                            ) : mediaInfo.embedUrl ? (
                                               <iframe
                                                 src={mediaInfo.embedUrl}
                                                 title="Media Preview"
                                                 style={{ width: '100%', height: '100%', border: 0 }}
                                                 allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                                                 allowFullScreen
+                                                loading="lazy"
                                               />
+                                            ) : (
+                                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
+                                                <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem', color: '#f87171' }}>Could not embed this link directly.</p>
+                                                <p style={{ fontSize: '0.75rem', color: '#94a3b8', maxWidth: '420px', lineHeight: 1.5 }}>
+                                                  Canva shortlinks require the Canva Embed URL. In Canva, click <strong>Share &gt; More &gt; Embed</strong> and copy the embed link or paste the full <code>&lt;iframe&gt;</code> snippet.
+                                                </p>
+                                              </div>
                                             )}
                                           </div>
                                         </div>

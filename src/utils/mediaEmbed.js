@@ -11,17 +11,155 @@
  * - Generic <iframe> Embed Code
  */
 
+// Cache for resolved shortlinks (e.g. canva.link -> canva.com/design/.../view?embed)
+const SHORTLINK_CACHE_KEY = 'exp_resolved_media_urls';
+
+// Pre-seeded known links so they resolve instantaneously without network
+let shortlinkMemoryCache = {
+  'https://canva.link/a8cqg3z8b10sm3o': 'https://www.canva.com/design/DAHVLtWMOxo/SwvFayAGeepDu3VxTk3gnw/view?embed',
+  'http://canva.link/a8cqg3z8b10sm3o': 'https://www.canva.com/design/DAHVLtWMOxo/SwvFayAGeepDu3VxTk3gnw/view?embed',
+  'canva.link/a8cqg3z8b10sm3o': 'https://www.canva.com/design/DAHVLtWMOxo/SwvFayAGeepDu3VxTk3gnw/view?embed'
+};
+
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const stored = window.localStorage.getItem(SHORTLINK_CACHE_KEY);
+    if (stored) {
+      shortlinkMemoryCache = { ...shortlinkMemoryCache, ...JSON.parse(stored) };
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function cacheResolvedUrl(originalUrl, resolvedUrl) {
+  if (!originalUrl || !resolvedUrl) return;
+  const key = originalUrl.trim();
+  shortlinkMemoryCache[key] = resolvedUrl.trim();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(SHORTLINK_CACHE_KEY, JSON.stringify(shortlinkMemoryCache));
+    } catch {
+      // Ignore storage errors
+    }
+  }
+}
+
+export function getCachedResolvedUrl(originalUrl) {
+  if (!originalUrl) return null;
+  const trimmed = originalUrl.trim();
+  return (
+    shortlinkMemoryCache[trimmed] ||
+    shortlinkMemoryCache[trimmed.replace(/^https?:\/\//i, '')] ||
+    shortlinkMemoryCache[`https://${trimmed.replace(/^https?:\/\//i, '')}`] ||
+    null
+  );
+}
+
+/**
+ * Transforms any Canva design URL into its iframe-embeddable equivalent with ?embed.
+ */
+export function toCanvaEmbedUrl(inputUrl) {
+  if (!inputUrl || typeof inputUrl !== 'string') return null;
+  const clean = inputUrl.trim();
+
+  // If already has embed parameter
+  if (clean.includes('canva.com/design/') && (clean.includes('?embed') || clean.includes('&embed'))) {
+    return clean;
+  }
+
+  // Handle canva.com/design/DAG.../...
+  if (clean.includes('canva.com/design/')) {
+    try {
+      const urlObj = new URL(clean.startsWith('http') ? clean : `https://${clean}`);
+      let path = urlObj.pathname;
+      if (path.endsWith('/edit') || path.endsWith('/watch') || path.endsWith('/present')) {
+        path = path.replace(/\/(edit|watch|present)$/, '/view');
+      } else if (!path.endsWith('/view')) {
+        path = `${path.replace(/\/$/, '')}/view`;
+      }
+      return `https://www.canva.com${path}?embed`;
+    } catch {
+      const base = clean.split('?')[0].replace(/\/(edit|watch|present)$/, '/view');
+      return `${base}?embed`;
+    }
+  }
+
+  return clean;
+}
+
+/**
+ * Asynchronously resolves shortlinks (like canva.link) or redirecting URLs
+ * using the backend API / dev server middleware, caching the result.
+ */
+export async function resolveMediaUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const clean = extractIframeSrc(rawUrl).trim();
+  if (!clean) return null;
+
+  // 1. Check if already directly an embeddable Canva URL
+  if (clean.includes('canva.com/design/') && (clean.includes('?embed') || clean.includes('&embed'))) {
+    return clean;
+  }
+
+  // 2. If it's a canva.com design URL without ?embed, convert it immediately
+  if (clean.includes('canva.com/design/')) {
+    const embed = toCanvaEmbedUrl(clean);
+    cacheResolvedUrl(clean, embed);
+    return embed;
+  }
+
+  // 3. Check cache for shortlinks
+  const cached = getCachedResolvedUrl(clean);
+  if (cached) {
+    return toCanvaEmbedUrl(cached);
+  }
+
+  // 4. If not a shortlink needing resolution, return as-is
+  if (!clean.includes('canva.link') && !clean.includes('canva.me')) {
+    return clean;
+  }
+
+  // 5. Query resolution API
+  try {
+    const fullUrl = clean.startsWith('http') ? clean : `https://${clean}`;
+    const res = await fetch(`/api/resolve-media?url=${encodeURIComponent(fullUrl)}`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (data && data.resolvedUrl) {
+      const finalEmbed = toCanvaEmbedUrl(data.resolvedUrl);
+      cacheResolvedUrl(clean, finalEmbed);
+      cacheResolvedUrl(fullUrl, finalEmbed);
+      return finalEmbed;
+    }
+  } catch (err) {
+    console.warn('[mediaEmbed] Could not resolve shortlink:', err);
+  }
+
+  return null;
+}
+
 /**
  * Extracts src from an iframe tag if the user pasted raw HTML embed code.
  */
 export function extractIframeSrc(input) {
   if (!input || typeof input !== 'string') return '';
-  const trimmed = input.trim();
+  let trimmed = input.trim();
+
+  // Decode common HTML entities (Canva HTML snippet often has &#x2F;)
+  trimmed = trimmed
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&#47;/g, '/')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
   
   // Match <iframe ... src="URL" ...> or src='URL'
   const iframeMatch = trimmed.match(/<iframe[^>]+src=["']([^"']+)["']/i);
   if (iframeMatch && iframeMatch[1]) {
-    return iframeMatch[1];
+    return iframeMatch[1].trim();
   }
 
   // Also check for standard URL inside any tag or raw text
@@ -59,36 +197,33 @@ export function parseEmbedMedia(rawInput) {
 
   // 1. CANVA PRESENTATIONS & DESIGNS
   // Formats:
+  // - https://canva.link/<shortId> (Canva share shortlink)
   // - https://www.canva.com/design/DAG.../.../view?embed
   // - https://www.canva.com/design/DAG.../.../view
   // - https://www.canva.com/design/DAG.../.../watch
   // - https://www.canva.com/design/DAG.../.../present
   // - https://www.canva.com/design/DAG.../.../edit
-  if (cleanInput.includes('canva.com/design/')) {
-    let embedUrl = cleanInput;
-    try {
-      const urlObj = new URL(cleanInput.startsWith('http') ? cleanInput : `https://${cleanInput}`);
-      let path = urlObj.pathname; // e.g. /design/DAG1234/abc/view or /design/DAG1234/view or /design/DAG1234/edit
-      
-      // Ensure path ends with /view
-      if (path.endsWith('/edit') || path.endsWith('/watch') || path.endsWith('/present')) {
-        path = path.replace(/\/(edit|watch|present)$/, '/view');
-      } else if (!path.endsWith('/view')) {
-        // e.g. /design/DAG1234 or /design/DAG1234/slug
-        path = `${path.replace(/\/$/, '')}/view`;
+  // - Raw Canva <iframe> embed snippets
+  const isCanva = cleanInput.includes('canva.com/design/') || cleanInput.includes('canva.link/') || cleanInput.includes('canva.me/');
+  if (isCanva) {
+    const isShortLink = cleanInput.includes('canva.link/') || cleanInput.includes('canva.me/');
+    let embedUrl = null;
+
+    if (isShortLink) {
+      const cached = getCachedResolvedUrl(cleanInput);
+      if (cached) {
+        embedUrl = toCanvaEmbedUrl(cached);
       }
-      
-      embedUrl = `https://www.canva.com${path}?embed`;
-    } catch {
-      if (!embedUrl.includes('?embed') && !embedUrl.includes('&embed')) {
-        embedUrl = `${embedUrl.split('?')[0]}?embed`;
-      }
+    } else {
+      embedUrl = toCanvaEmbedUrl(cleanInput);
     }
 
     return {
       type: 'canva',
       rawUrl: cleanInput,
       embedUrl,
+      isShortLink,
+      needsResolution: isShortLink && !embedUrl,
       isDirectVideo: false,
       isPresentation: true,
       isWalkthrough: false,

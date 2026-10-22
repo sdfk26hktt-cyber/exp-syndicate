@@ -458,7 +458,7 @@ export const AgentProvider = ({ children }) => {
         }
         
         if (myData) {
-          const isRealGuest = myData.status === 'guest' || myData.role === 'guest' || myData.profile?.role === 'Guest';
+          const isRealGuest = myData.status === 'guest' || (!myData.status && (myData.role === 'guest' || myData.profile?.role === 'Guest'));
           if (currentUser.role === 'guest' && isRealGuest) {
             setPhases([]);
           } else {
@@ -934,15 +934,15 @@ export const AgentProvider = ({ children }) => {
 
   const getAgentRoleLabel = (agent) => {
     if (!agent) return 'Agent';
-    const status = agent.status || (agent.profile?.role === 'Administrator' ? 'admin' : agent.role === 'guest' ? 'guest' : 'onboarding');
-    if (status === 'admin' || agent.profile?.role === 'Administrator') return 'Administrator';
-    if (status === 'guest' || agent.role === 'guest' || agent.profile?.role === 'Guest') return 'Guest';
+    const status = agent.status || (agent.profile?.role === 'Administrator' ? 'admin' : (agent.role === 'guest' || agent.profile?.role === 'Guest') ? 'guest' : 'onboarding');
+    if (status === 'admin' || (!agent.status && agent.profile?.role === 'Administrator')) return 'Administrator';
     if (status === 'team_agent') {
       const subrole = agent.profile?.team_subrole || 'team_agent';
       return subrole === 'showing_partner' ? 'Showing Partner' : 'Team Agent';
     }
     if (status === 'flex_agent') return 'Flex Agent';
     if (status === 'onboarding') return 'Onboarding Agent';
+    if (status === 'guest' || (!agent.status && (agent.role === 'guest' || agent.profile?.role === 'Guest'))) return 'Guest';
     return 'Agent';
   };
 
@@ -957,9 +957,29 @@ export const AgentProvider = ({ children }) => {
   };
 
   const updateAgentStatus = async (agentId, newStatus) => {
-    await supabase.from('agents').update({ status: newStatus }).ilike('id', agentId);
+    const target = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
+    const existingProfile = target?.profile || {};
+    const friendlyRole = newStatus === 'guest' ? 'Guest'
+      : newStatus === 'admin' ? 'Administrator'
+      : newStatus === 'flex_agent' ? 'Flex Agent'
+      : newStatus === 'team_agent' ? 'Team Agent'
+      : newStatus === 'onboarding' ? 'Onboarding Agent'
+      : 'Agent';
+
+    const updatedProfile = {
+      ...existingProfile,
+      role: friendlyRole
+    };
+
+    const updatePayload = {
+      status: newStatus,
+      role: newStatus === 'guest' ? 'guest' : newStatus === 'admin' ? 'admin' : 'agent',
+      profile: updatedProfile
+    };
+
+    await supabase.from('agents').update(updatePayload).ilike('id', agentId);
     if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
-      setCurrentAgentData({ ...currentAgentData, status: newStatus });
+      setCurrentAgentData({ ...currentAgentData, ...updatePayload });
     }
     loadAgents();
   };
@@ -967,14 +987,25 @@ export const AgentProvider = ({ children }) => {
   const adminUpdateAgentRoleAndMarket = async (agentId, newStatus, teamSubrole, market) => {
     const target = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
     const existingProfile = target?.profile || {};
+    const friendlyRole = newStatus === 'guest' ? 'Guest'
+      : newStatus === 'admin' ? 'Administrator'
+      : newStatus === 'flex_agent' ? 'Flex Agent'
+      : newStatus === 'team_agent' ? 'Team Agent'
+      : newStatus === 'onboarding' ? 'Onboarding Agent'
+      : (existingProfile.role && existingProfile.role !== 'Guest' ? existingProfile.role : 'Agent');
+
     const updatedProfile = {
       ...existingProfile,
+      role: friendlyRole,
       ...(teamSubrole ? { team_subrole: teamSubrole } : {}),
       ...(market ? { market: market } : {})
     };
 
     const updatePayload = {
-      ...(newStatus ? { status: newStatus } : {}),
+      ...(newStatus ? { 
+        status: newStatus,
+        role: newStatus === 'guest' ? 'guest' : newStatus === 'admin' ? 'admin' : 'agent'
+      } : {}),
       profile: updatedProfile
     };
 

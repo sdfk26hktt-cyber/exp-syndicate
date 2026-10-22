@@ -1,5 +1,13 @@
 const linqApiKey = process.env.LINQ_API_KEY || 'linq_8g9j8emFbtz7k9WUH4LY9Capp8Wo6no2';
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb'
+    }
+  }
+};
+
 export default async function handler(req, res) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -20,7 +28,6 @@ export default async function handler(req, res) {
 
     let rawBase64 = base64Data;
     let mimeType = contentType || 'image/jpeg';
-    let safeFilename = filename || `attachment-${Date.now()}.jpg`;
 
     if (dataUrl && typeof dataUrl === 'string' && dataUrl.includes(',')) {
       const parts = dataUrl.split(',');
@@ -28,6 +35,16 @@ export default async function handler(req, res) {
       if (match) mimeType = match[1];
       rawBase64 = parts[1];
     }
+
+    // Determine clean file extension from mimeType
+    const ext = mimeType.includes('png') ? '.png'
+      : mimeType.includes('webp') ? '.webp'
+      : mimeType.includes('gif') ? '.gif'
+      : '.jpg';
+
+    let safeFilename = (filename || `attachment-${Date.now()}${ext}`)
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!safeFilename.includes('.')) safeFilename += ext;
 
     if (!rawBase64) {
       return res.status(400).json({ error: 'No image data provided. Please provide base64Data or dataUrl.' });

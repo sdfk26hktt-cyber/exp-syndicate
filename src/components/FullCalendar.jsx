@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
 import { useAgent } from '../context/AgentContext';
-import { Calendar as CalendarIcon, Download, Plus, X, MapPin, CheckSquare, Square, ChevronDown, CalendarPlus, Copy, User } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Plus, X, MapPin, CheckSquare, Square, ChevronDown, CalendarPlus, Copy, User, ExternalLink } from 'lucide-react';
 import LocationAutocomplete from './LocationAutocomplete';
 
 const CATEGORIES = {
@@ -933,10 +933,54 @@ const FullCalendar = () => {
               </button>
             </div>
             <div style={styles.modalBody}>
-              <p style={{ marginBottom: '1rem', color: 'var(--color-text-main)', lineHeight: 1.5 }}>
-                You can sync the Training Calendar with Google Calendar, Apple Calendar, or Outlook by subscribing to the live feed URL below.
+              <p style={{ marginBottom: '1.25rem', color: 'var(--color-text-main)', lineHeight: 1.5 }}>
+                Sync live training events directly to your phone or computer. Changes and newly approved events will automatically update in your calendar!
               </p>
-              
+
+              {/* 1-Click Quick Actions */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                <a
+                  href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(`${window.location.origin}/api/calendar?sync=1`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    textDecoration: 'none',
+                    padding: '0.65rem 1rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '8px'
+                  }}
+                >
+                  <ExternalLink size={16} /> Add to Google Calendar
+                </a>
+
+                <a
+                  href={`${window.location.origin.replace(/^https?:/, 'webcal:')}/api/calendar?sync=1`}
+                  className="btn-secondary"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    textDecoration: 'none',
+                    padding: '0.65rem 1rem',
+                    fontSize: '0.875rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--color-border)'
+                  }}
+                >
+                  <CalendarPlus size={16} /> Apple / Outlook (1-Click)
+                </a>
+              </div>
+
+              {/* Live Feed URL with Copy */}
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+                Subscription Feed URL
+              </label>
               <div style={{
                 display: 'flex', 
                 alignItems: 'center', 
@@ -945,7 +989,7 @@ const FullCalendar = () => {
                 padding: '0.75rem', 
                 borderRadius: '8px', 
                 border: '1px solid var(--color-border)',
-                marginBottom: '1rem'
+                marginBottom: '1.25rem'
               }}>
                 <input 
                   type="text" 
@@ -956,19 +1000,31 @@ const FullCalendar = () => {
                 <button 
                   onClick={() => {
                     navigator.clipboard.writeText(`${window.location.origin}/api/calendar?sync=1`);
-                    alert('Copied to clipboard!');
+                    alert('Calendar subscription URL copied to clipboard!');
                   }}
                   className="btn-secondary"
                   style={{ padding: '0.4rem 0.6rem' }}
+                  title="Copy URL"
                 >
                   <Copy size={16} />
                 </button>
               </div>
 
-              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <p style={{ margin: 0 }}><strong>Google Calendar:</strong> On the left menu, click the <strong>+</strong> next to "Other calendars" &gt; <strong>From URL</strong>, and paste the link.</p>
-                <p style={{ margin: 0 }}><strong>Apple Calendar:</strong> File &gt; New Calendar Subscription &gt; Paste the link.</p>
-                <p style={{ margin: 0 }}><strong>Outlook:</strong> Add Calendar &gt; Subscribe from web &gt; Paste the link.</p>
+              {/* Platform Instructions */}
+              <div style={{
+                fontSize: '0.85rem',
+                color: 'var(--color-text-muted)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+                padding: '1rem',
+                backgroundColor: 'var(--color-bg-secondary)',
+                borderRadius: '8px',
+                border: '1px solid var(--color-border)'
+              }}>
+                <p style={{ margin: 0 }}><strong>Google Calendar:</strong> Click the "Add to Google Calendar" button above, or click <strong>+</strong> next to "Other calendars" &gt; <strong>From URL</strong>, and paste the feed URL.</p>
+                <p style={{ margin: 0 }}><strong>Apple Calendar (Mac / iPhone):</strong> Tap "Apple / Outlook (1-Click)" above, or in Apple Calendar choose <strong>File &gt; New Calendar Subscription</strong> &gt; Paste the link.</p>
+                <p style={{ margin: 0 }}><strong>Outlook / Microsoft 365:</strong> In Outlook Web, click <strong>Add Calendar &gt; Subscribe from web</strong> &gt; Paste the link.</p>
               </div>
             </div>
           </div>
