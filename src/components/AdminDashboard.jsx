@@ -1758,7 +1758,7 @@ const AdminDashboard = () => {
                       : 'Guest Users';
                     const groupAgents = agents
                       .filter(a => {
-                        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
+                        const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.profile?.role === 'Flex Agent' || a.profile?.team_subrole === 'flex_agent') ? 'flex_agent' : (a.profile?.role === 'Team Agent') ? 'team_agent' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
                         const subrole = a.profile?.team_subrole || 'team_agent';
                         const market = getAgentMarket(a);
 
@@ -1879,7 +1879,7 @@ const AdminDashboard = () => {
                               </td>
                               <td style={styles.roleTd}>
                                 <select 
-                                  value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding')} 
+                                  value={a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.profile?.role === 'Flex Agent' || a.profile?.team_subrole === 'flex_agent') ? 'flex_agent' : (a.profile?.role === 'Team Agent') ? 'team_agent' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding')} 
                                   onChange={(e) => updateAgentStatus(a.id, e.target.value)}
                                   style={styles.roleSelect}
                                   onClick={(e) => e.stopPropagation()}
@@ -3777,7 +3777,7 @@ const AdminDashboard = () => {
                         { id: 'admin', label: '🛡️ Administrators' }
                       ].map(g => {
                         const count = (agents || []).filter(a => {
-                          const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
+                          const s = a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.profile?.role === 'Flex Agent' || a.profile?.team_subrole === 'flex_agent') ? 'flex_agent' : (a.profile?.role === 'Team Agent') ? 'team_agent' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding');
                           const subrole = a.profile?.team_subrole || 'team_agent';
                           if (g.id === 'admin') return s === 'admin';
                           if (g.id === 'flex_agent') return s === 'flex_agent';

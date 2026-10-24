@@ -973,13 +973,23 @@ export const AgentProvider = ({ children }) => {
 
     const updatePayload = {
       status: newStatus,
-      role: newStatus === 'guest' ? 'guest' : newStatus === 'admin' ? 'admin' : 'agent',
       profile: updatedProfile
     };
 
-    await supabase.from('agents').update(updatePayload).ilike('id', agentId);
+    // Optimistically update local agents state for immediate UI responsiveness
+    setAgents(prev => prev.map(a => 
+      a.id?.toLowerCase() === agentId.toLowerCase() 
+        ? { ...a, status: newStatus, profile: updatedProfile } 
+        : a
+    ));
+
     if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
-      setCurrentAgentData({ ...currentAgentData, ...updatePayload });
+      setCurrentAgentData(prev => ({ ...prev, status: newStatus, profile: updatedProfile }));
+    }
+
+    const { error } = await supabase.from('agents').update(updatePayload).ilike('id', agentId);
+    if (error) {
+      console.error('Failed to update agent status:', error);
     }
     loadAgents();
   };
@@ -1002,16 +1012,24 @@ export const AgentProvider = ({ children }) => {
     };
 
     const updatePayload = {
-      ...(newStatus ? { 
-        status: newStatus,
-        role: newStatus === 'guest' ? 'guest' : newStatus === 'admin' ? 'admin' : 'agent'
-      } : {}),
+      ...(newStatus ? { status: newStatus } : {}),
       profile: updatedProfile
     };
 
-    await supabase.from('agents').update(updatePayload).ilike('id', agentId);
+    // Optimistically update local agents state
+    setAgents(prev => prev.map(a => 
+      a.id?.toLowerCase() === agentId.toLowerCase() 
+        ? { ...a, ...(newStatus ? { status: newStatus } : {}), profile: updatedProfile } 
+        : a
+    ));
+
     if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
-      setCurrentAgentData({ ...currentAgentData, ...updatePayload });
+      setCurrentAgentData(prev => ({ ...prev, ...(newStatus ? { status: newStatus } : {}), profile: updatedProfile }));
+    }
+
+    const { error } = await supabase.from('agents').update(updatePayload).ilike('id', agentId);
+    if (error) {
+      console.error('Failed to update agent role and market:', error);
     }
     loadAgents();
   };
