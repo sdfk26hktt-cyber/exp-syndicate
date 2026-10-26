@@ -120,44 +120,108 @@ const FullCalendar = () => {
     const evts = Array.isArray(eventsToDownload) ? eventsToDownload : [eventsToDownload];
     if (evts.length === 0) return;
 
-    const formatIcsDate = (dateStr, timeStr) => {
-      const d = new Date(`${dateStr} ${timeStr.replace('CST','').trim()}`);
-      if (isNaN(d.getTime())) return new Date().toISOString().replace(/-|:|\.\d+/g, '');
-      return d.toISOString().replace(/-|:|\.\d+/g, '');
+    const parseMountainTimeToUtc = (dateStr, timeStr = '12:00') => {
+      if (!dateStr || !dateStr.includes('-')) return null;
+      const [year, month, day] = dateStr.split('-').map(Number);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+
+      let hour = 12, minute = 0;
+      if (timeStr && timeStr.includes(':')) {
+        const parts = timeStr.replace(/[^0-9:]/g, '').split(':').map(Number);
+        if (!isNaN(parts[0])) hour = parts[0];
+        if (!isNaN(parts[1])) minute = parts[1];
+      }
+
+      const isoStr = `${dateStr}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+      try {
+        const testDate = new Date(`${isoStr}Z`);
+        const dtf = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Denver',
+          timeZoneName: 'longOffset'
+        });
+        const parts = dtf.formatToParts(testDate);
+        const tzOffset = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT-07:00';
+        const match = tzOffset.match(/GMT([+-])(\d{2}):(\d{2})/);
+        const sign = match ? (match[1] === '-' ? -1 : 1) : -1;
+        const offH = match ? parseInt(match[2], 10) : 7;
+        const offM = match ? parseInt(match[3], 10) : 0;
+        const totalOffsetMin = sign * (offH * 60 + offM);
+        return new Date(Date.UTC(year, month - 1, day, hour, minute) - totalOffsetMin * 60 * 1000);
+      } catch {
+        return new Date(Date.UTC(year, month - 1, day, hour + 7, minute));
+      }
     };
 
+    const formatIcsDate = (date) => {
+      return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    };
+
+    const escapeIcs = (str) => {
+      if (!str) return '';
+      return String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\r?\n/g, '\\n');
+    };
+
+    const nowUtc = formatIcsDate(new Date());
+
     const vEvents = evts.map(evt => {
+      const startUtc = parseMountainTimeToUtc(evt.date, evt.time);
+      if (!startUtc) return null;
+
+      let endUtc = null;
+      const endTimeStr = evt.end_time || evt.endTime;
+      if (endTimeStr) {
+        endUtc = parseMountainTimeToUtc(evt.date, endTimeStr);
+        if (endUtc && endUtc <= startUtc) {
+          endUtc = new Date(startUtc.getTime() + 60 * 60 * 1000);
+        }
+      }
+      if (!endUtc) {
+        endUtc = new Date(startUtc.getTime() + 60 * 60 * 1000);
+      }
+
       const descLines = [];
       if (evt.instructor) descLines.push(`Instructor: ${evt.instructor}`);
       if (evt.submitted_by || evt.submittedBy) descLines.push(`Suggested By: ${evt.submitted_by || evt.submittedBy}`);
       if (evt.description) descLines.push(evt.description);
-      const fullDesc = descLines.length > 0 ? descLines.join('\n\n') : 'No description';
+      const fullDesc = descLines.length > 0 ? descLines.join('\n\n') : '';
+
+      const rawId = String(evt.id || Math.random().toString(36).substring(2, 9));
+      const uid = `${rawId.startsWith('evt-') ? rawId : `evt-${rawId}`}@expsyndicate.com`;
 
       return [
         'BEGIN:VEVENT',
-        `UID:${evt.id}@expsyndicate.com`,
-        `DTSTAMP:${new Date().toISOString().replace(/-|:|\.\d+/g, '')}`,
-        `DTSTART:${formatIcsDate(evt.date, evt.time)}`,
-        evt.end_time || evt.endTime ? `DTEND:${formatIcsDate(evt.date, evt.end_time || evt.endTime)}` : null,
-        `SUMMARY:${evt.title}`,
-        evt.location ? `LOCATION:${evt.location}` : null,
-        `DESCRIPTION:${fullDesc}`,
+        `UID:${uid}`,
+        `DTSTAMP:${nowUtc}`,
+        `DTSTART:${formatIcsDate(startUtc)}`,
+        `DTEND:${formatIcsDate(endUtc)}`,
+        `SUMMARY:${escapeIcs(evt.title || 'Training Event')}`,
+        evt.location ? `LOCATION:${escapeIcs(evt.location)}` : null,
+        fullDesc ? `DESCRIPTION:${escapeIcs(fullDesc)}` : null,
+        'STATUS:CONFIRMED',
         'END:VEVENT'
-      ].filter(Boolean).join('\n');
-    }).join('\n');
+      ].filter(Boolean).join('\r\n');
+    }).filter(Boolean).join('\r\n');
 
     const icsContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//eXp Syndicate//Onboarding App//EN',
+      'PRODID:-//eXp Syndicate//Training Calendar//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:eXp Syndicate Training Calendar',
+      'X-WR-TIMEZONE:America/Denver',
       vEvents,
       'END:VCALENDAR'
-    ].join('\n');
+    ].join('\r\n');
 
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
     const link = document.createElement('a');
     link.href = window.URL.createObjectURL(blob);
-    link.setAttribute('download', evts.length > 1 ? 'bulk_events.ics' : `${evts[0].title.replace(/\s+/g, '_')}.ics`);
+    link.setAttribute('download', evts.length > 1 ? 'bulk_events.ics' : `${(evts[0].title || 'event').replace(/\s+/g, '_')}.ics`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
