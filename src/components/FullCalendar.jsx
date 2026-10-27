@@ -147,7 +147,7 @@ const FullCalendar = () => {
         const offM = match ? parseInt(match[3], 10) : 0;
         const totalOffsetMin = sign * (offH * 60 + offM);
         return new Date(Date.UTC(year, month - 1, day, hour, minute) - totalOffsetMin * 60 * 1000);
-      } catch {
+      } catch (_err) {
         return new Date(Date.UTC(year, month - 1, day, hour + 7, minute));
       }
     };

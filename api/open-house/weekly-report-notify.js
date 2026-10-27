@@ -68,7 +68,7 @@ export default async function handler(req, res) {
         const resText = await linqRes.text();
         try {
           linqResponseData = JSON.parse(resText);
-        } catch {
+        } catch (_err) {
           linqResponseData = resText;
         }
 

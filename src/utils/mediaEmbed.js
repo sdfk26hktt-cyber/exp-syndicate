@@ -27,7 +27,7 @@ if (typeof window !== 'undefined' && window.localStorage) {
     if (stored) {
       shortlinkMemoryCache = { ...shortlinkMemoryCache, ...JSON.parse(stored) };
     }
-  } catch {
+  } catch (_err) {
     // Ignore storage errors
   }
 }
@@ -39,7 +39,7 @@ export function cacheResolvedUrl(originalUrl, resolvedUrl) {
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       window.localStorage.setItem(SHORTLINK_CACHE_KEY, JSON.stringify(shortlinkMemoryCache));
-    } catch {
+    } catch (_err) {
       // Ignore storage errors
     }
   }
@@ -79,7 +79,7 @@ export function toCanvaEmbedUrl(inputUrl) {
         path = `${path.replace(/\/$/, '')}/view`;
       }
       return `https://www.canva.com${path}?embed`;
-    } catch {
+    } catch (_err) {
       const base = clean.split('?')[0].replace(/\/(edit|watch|present)$/, '/view');
       return `${base}?embed`;
     }
@@ -249,7 +249,7 @@ export function parseEmbedMedia(rawInput) {
         urlObj.searchParams.set('iframe', 'true');
       }
       embedUrl = urlObj.toString();
-    } catch {
+    } catch (_err) {
       if (!embedUrl.includes('iframe=true')) {
         embedUrl = embedUrl.includes('?') ? `${embedUrl}&iframe=true` : `${embedUrl}?iframe=true`;
       }

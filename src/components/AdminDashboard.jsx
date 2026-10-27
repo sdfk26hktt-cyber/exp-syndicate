@@ -295,13 +295,13 @@ const AdminDashboard = () => {
   const [editAgentError, setEditAgentError] = useState('');
 
   // Set Password Modal State
-  const [setPasswordAgent, setPasswordAgent] = useState(null);
+  const [passwordAgent, setPasswordAgent] = useState(null);
   const [directPassword, setDirectPassword] = useState('Welcome123!');
   const [showDirectPassword, setShowDirectPassword] = useState(false);
   const [autoConfirmEmail, setAutoConfirmEmail] = useState(true);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
-  const [setPasswordError, setPasswordError] = useState('');
-  const [setPasswordSuccess, setPasswordSuccess] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   const openSetPasswordModal = (agent) => {
     setPasswordAgent(agent);
@@ -323,9 +323,9 @@ const AdminDashboard = () => {
 
   const handleSetPasswordSubmit = async (e) => {
     e.preventDefault();
-    if (!setPasswordAgent) return;
+    if (!passwordAgent) return;
 
-    const email = (setPasswordAgent.id || setPasswordAgent.profile?.email || '').toLowerCase().trim();
+    const email = (passwordAgent.id || passwordAgent.profile?.email || '').toLowerCase().trim();
     if (!email) {
       setPasswordError('Agent email address is missing.');
       return;
@@ -358,7 +358,7 @@ const AdminDashboard = () => {
       }
 
       setPasswordSuccess(data.message || `Password set successfully for ${email}`);
-      setActionSuccessMsg(`Direct password set for ${setPasswordAgent.name || email}`);
+      setActionSuccessMsg(`Direct password set for ${passwordAgent.name || email}`);
       setTimeout(() => setActionSuccessMsg(''), 5000);
       setTimeout(() => {
         setPasswordAgent(null);
@@ -2283,7 +2283,7 @@ const AdminDashboard = () => {
             )}
 
             {/* Set Agent Password Modal */}
-            {setPasswordAgent && (
+            {passwordAgent && (
               <div style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                 backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 2000,
@@ -2314,28 +2314,28 @@ const AdminDashboard = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>AGENT</span>
                       <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', backgroundColor: '#EEF2FF', color: 'var(--color-primary)', borderRadius: '9999px', fontWeight: 600 }}>
-                        {setPasswordAgent.status ? setPasswordAgent.status.replace('_', ' ').toUpperCase() : 'AGENT'}
+                        {passwordAgent.status ? passwordAgent.status.replace('_', ' ').toUpperCase() : 'AGENT'}
                       </span>
                     </div>
                     <div style={{ fontWeight: 600, color: 'var(--color-dark-navy)', fontSize: '0.95rem' }}>
-                      {setPasswordAgent.name || setPasswordAgent.id}
+                      {passwordAgent.name || passwordAgent.id}
                     </div>
                     <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
-                      {setPasswordAgent.id}
+                      {passwordAgent.id}
                     </div>
                   </div>
 
-                  {setPasswordError && (
+                  {passwordError && (
                     <div style={{ padding: '0.65rem 0.85rem', backgroundColor: '#FEE2E2', border: '1px solid #F87171', borderRadius: 'var(--border-radius-sm)', color: '#991B1B', fontSize: '0.82rem', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                       <AlertCircle size={15} style={{ flexShrink: 0 }} />
-                      <span>{setPasswordError}</span>
+                      <span>{passwordError}</span>
                     </div>
                   )}
 
-                  {setPasswordSuccess && (
+                  {passwordSuccess && (
                     <div style={{ padding: '0.65rem 0.85rem', backgroundColor: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 'var(--border-radius-sm)', color: '#166534', fontSize: '0.82rem', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                       <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
-                      <span>{setPasswordSuccess}</span>
+                      <span>{passwordSuccess}</span>
                     </div>
                   )}
 

@@ -9,7 +9,7 @@ function parseJsonBody(req) {
     req.on('end', () => {
       try {
         resolve(body ? JSON.parse(body) : {});
-      } catch {
+      } catch (_err) {
         resolve({});
       }
     });
@@ -44,7 +44,7 @@ function apiDevPlugin() {
               headers: { 'User-Agent': 'Mozilla/5.0' }
             });
             finalUrl = headRes.url || targetUrl;
-          } catch {
+          } catch (_err) {
             const getRes = await fetch(targetUrl, {
               method: 'GET',
               redirect: 'follow',

@@ -226,7 +226,7 @@ export default async function handler(req, res) {
     try {
       const urlObj = new URL(req.url, 'http://localhost');
       isDownload = urlObj.searchParams.get('download') === '1';
-    } catch {
+    } catch (_err) {
       isDownload = req.query?.download === '1';
     }
 
