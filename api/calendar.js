@@ -91,14 +91,14 @@ function foldLine(line) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -234,6 +234,11 @@ export default async function handler(req, res) {
       'Content-Disposition',
       isDownload ? 'attachment; filename="training-calendar.ics"' : 'inline; filename="training-calendar.ics"'
     );
+
+    if (req.method === 'HEAD') {
+      res.setHeader('Content-Length', Buffer.byteLength(icsContent, 'utf-8'));
+      return res.status(200).end();
+    }
 
     res.status(200).send(icsContent);
   } catch (err) {
