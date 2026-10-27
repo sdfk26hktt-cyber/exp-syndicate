@@ -147,11 +147,11 @@ function apiDevPlugin() {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base: '/',
   plugins: [
     react(),
-    apiDevPlugin(),
+    ...(command === 'serve' ? [apiDevPlugin()] : []),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'masked-icon.svg'],
@@ -189,4 +189,4 @@ export default defineConfig({
       }
     })
   ],
-})
+}))
