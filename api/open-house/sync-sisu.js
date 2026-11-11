@@ -31,10 +31,10 @@ function normalizeAddress(addr) {
  * Fetch and parse all pages of Sierra Interactive featured listings from ephomesonline.com
  * Extracts MLS ID, main photo CDN URL, price, address, beds, baths, and sqft.
  */
-async function fetchSierraFeaturedListings() {
+async function fetchSierraFeaturedListings(debugObj = {}) {
   const sierraListings = [];
   let page = 1;
-  const maxPages = 15;
+  const maxPages = 10;
 
   while (page <= maxPages) {
     const url = page === 1 
@@ -42,34 +42,41 @@ async function fetchSierraFeaturedListings() {
       : `https://www.ephomesonline.com/featured-listings/?pg=${page}`;
 
     let html = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    let lastStatus = 0;
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const res = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
           }
         });
+        lastStatus = res.status;
         if (res.ok) {
           html = await res.text();
           break;
         }
       } catch (_fetchErr) {
-        // Retry on network blip
+        // Retry
       }
-      if (attempt < 3) await new Promise(r => setTimeout(r, 800));
+      if (attempt < 2) await new Promise(r => setTimeout(r, 400));
+    }
+
+    if (page === 1) {
+      debugObj.sierraPage1Status = lastStatus;
+      debugObj.sierraPage1HtmlLength = html ? html.length : 0;
     }
 
     if (!html) break;
 
     try {
-
       // Find all si-listing card blocks
       const cardRegex = /<div[^>]*class=["'][^"']*si-listing\b[^"']*["'][\s\S]*?(?=<div[^>]*class=["'][^"']*si-listing\b|<\/div>\s*<\/div>\s*<\/div>\s*<div class="si-pagination|$)/gi;
       const matches = html.match(cardRegex) || [];
       if (matches.length === 0) break;
 
       for (const cardHtml of matches) {
-        // Skip skeleton placeholder cards
         if (cardHtml.includes('ph-item') || cardHtml.includes('ph-picture')) continue;
 
         // 1. MLS Number
@@ -100,7 +107,6 @@ async function fetchSierraFeaturedListings() {
           photo = null;
         }
         if (photo) {
-          // Normalize to high-resolution pics2x or pics3x
           photo = photo.replace(/\/pics1x\//i, '/pics2x/');
         }
 
@@ -169,6 +175,7 @@ async function fetchSierraFeaturedListings() {
     }
   }
 
+  debugObj.sierraCount = sierraListings.length;
   return sierraListings;
 }
 
@@ -249,9 +256,10 @@ export default async function handler(req, res) {
   try {
     let syncedListings = [];
     let source = 'sisu_fub_sierra_live';
+    const debug = {};
 
     // 0. Fetch all pages of Sierra Interactive featured listings (live MLS photos & details)
-    const sierraListings = await fetchSierraFeaturedListings();
+    const sierraListings = await fetchSierraFeaturedListings(debug);
     const matchedMlsSet = new Set();
 
     // 1. Pull live Sisu listings via Follow Up Boss Sisu Sellers Pipeline
@@ -260,22 +268,30 @@ export default async function handler(req, res) {
       try {
         const fubAuth = Buffer.from(`${fubApiKey}:`).toString('base64');
         let allDeals = [];
-        let nextUrl = 'https://api.followupboss.com/v1/deals?limit=100';
 
-        while (nextUrl && allDeals.length < 2000) {
-          const fubRes = await fetch(nextUrl, {
-            headers: {
-              'Authorization': `Basic ${fubAuth}`,
-              'Accept': 'application/json'
-            }
-          });
-          if (!fubRes.ok) break;
-          const data = await fubRes.json();
-          const deals = data.deals || [];
-          allDeals.push(...deals);
-          nextUrl = data._metadata?.nextLink;
-          if (!deals.length) break;
+        // Fetch Pipeline 4 (Sisu Sellers) and Pipeline 2 (Sellers) with status=Active directly
+        const targetPipelines = [4, 2];
+        for (const pipeId of targetPipelines) {
+          let nextUrl = `https://api.followupboss.com/v1/deals?pipelineId=${pipeId}&status=Active&limit=100`;
+          let pageCount = 0;
+          while (nextUrl && pageCount < 5) {
+            pageCount++;
+            const fubRes = await fetch(nextUrl, {
+              headers: {
+                'Authorization': `Basic ${fubAuth}`,
+                'Accept': 'application/json'
+              }
+            });
+            if (!fubRes.ok) break;
+            const data = await fubRes.json();
+            const deals = data.deals || [];
+            allDeals.push(...deals);
+            nextUrl = data._metadata?.nextLink;
+            if (!deals.length) break;
+          }
         }
+
+        debug.fubTotalDeals = allDeals.length;
 
         // STRICT FILTER: Only allow Active Listing status sellers
         // Reject all leads, appointment set, appointment met, 1st showing, signed, pending, closed, lost, pipeline
@@ -307,6 +323,8 @@ export default async function handler(req, res) {
           const hasAddress = Boolean(d.customAddressLine1 || (d.name && /\d+/.test(d.name)));
           return isActiveListingStage && !isExcludedStage && hasAddress;
         });
+
+        debug.fubActiveDeals = activeDeals.length;
 
         if (activeDeals.length > 0) {
           for (const d of activeDeals) {
@@ -429,8 +447,25 @@ export default async function handler(req, res) {
       });
     }
 
-    // Upsert clean active listings into Supabase cloud config
-    if (supabase && syncedListings.length > 0) {
+    // 3. Fallback: If live network calls were blocked or yielded 0, load the clean stored inventory from Supabase
+    if (syncedListings.length === 0 && supabase) {
+      try {
+        const { data: configRow } = await supabase
+          .from('agents')
+          .select('profile')
+          .eq('id', '__SYSTEM_CONFIG_LISTINGS__')
+          .single();
+        if (configRow?.profile?.listings && Array.isArray(configRow.profile.listings) && configRow.profile.listings.length > 0) {
+          syncedListings = configRow.profile.listings;
+          source = 'supabase_active_cache';
+        }
+      } catch (_cacheErr) {
+        // Fallback
+      }
+    }
+
+    // Upsert clean active listings into Supabase cloud config if we have fresh live listings
+    if (supabase && syncedListings.length > 0 && source !== 'supabase_active_cache') {
       try {
         await supabase.from('agents').upsert([{
           id: '__SYSTEM_CONFIG_LISTINGS__',
@@ -456,6 +491,7 @@ export default async function handler(req, res) {
       sisuCount: fubSisuCount,
       sierraCount: addedSierraCount,
       syncedAt: new Date().toISOString(),
+      debug,
       listings: syncedListings
     });
   } catch (err) {
