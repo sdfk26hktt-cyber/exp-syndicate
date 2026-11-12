@@ -131,9 +131,10 @@ const AdminDashboard = () => {
     fetchAdmins();
   }, [activeTab]);
 
-  const saveAdminUser = async (email, name, password) => {
+  const saveAdminUser = async (email, name, password, phone = '') => {
     const normalizedEmail = (email || '').toLowerCase().trim();
     if (!normalizedEmail) return false;
+    const cleanPhone = (phone || '').trim();
 
     const adminObj = {
       email: normalizedEmail,
@@ -141,15 +142,30 @@ const AdminDashboard = () => {
       created_at: new Date().toISOString()
     };
 
-    // 1. Ensure agent record exists with status 'admin'
+    // 1. Ensure agent record exists with status 'admin' while preserving any existing profile fields (such as phone)
     try {
-      await supabase.from('agents').upsert([{
-        id: normalizedEmail,
-        name: name || normalizedEmail.split('@')[0],
-        status: 'admin',
-        xp: 0,
-        profile: { phone: '', role: 'Administrator' }
-      }], { onConflict: 'id' });
+      const { data: existingAgent } = await supabase.from('agents').select('*').ilike('id', normalizedEmail).maybeSingle();
+      const targetId = existingAgent?.id || normalizedEmail;
+      const mergedProfile = {
+        ...(existingAgent?.profile || {}),
+        role: 'Administrator',
+        ...(cleanPhone ? { phone: cleanPhone } : { phone: existingAgent?.profile?.phone || '' })
+      };
+      if (existingAgent?.id) {
+        await supabase.from('agents').update({
+          name: name || existingAgent.name || normalizedEmail.split('@')[0],
+          status: 'admin',
+          profile: mergedProfile
+        }).eq('id', targetId);
+      } else {
+        await supabase.from('agents').upsert([{
+          id: normalizedEmail,
+          name: name || normalizedEmail.split('@')[0],
+          status: 'admin',
+          xp: 0,
+          profile: mergedProfile
+        }], { onConflict: 'id' });
+      }
     } catch (agentErr) {
       console.debug('agents table upsert notice for admin:', agentErr);
     }
@@ -237,9 +253,15 @@ const AdminDashboard = () => {
       return;
     }
     try {
-      // 1. Update agents table status from 'admin' to 'onboarding'
+      // 1. Update agents table status from 'admin' to 'onboarding' while preserving existing profile fields
       try {
-        await supabase.from('agents').update({ status: 'onboarding', profile: { role: 'Agent' } }).ilike('id', normalized);
+        const { data: existingAgent } = await supabase.from('agents').select('id, profile').ilike('id', normalized).maybeSingle();
+        if (existingAgent?.id) {
+          await supabase.from('agents').update({
+            status: 'onboarding',
+            profile: { ...(existingAgent.profile || {}), role: 'Onboarding Agent' }
+          }).eq('id', existingAgent.id);
+        }
       } catch (e) {
         console.debug(e);
       }
@@ -396,8 +418,8 @@ const AdminDashboard = () => {
     const profileUpdates = {
       ...(editingAgent.profile || {}),
       role: friendlyRole,
-      phone: editAgentPhone,
-      altPhone: editAgentAltPhone,
+      phone: (editAgentPhone || '').trim(),
+      altPhone: (editAgentAltPhone || '').trim(),
       address: editAgentAddress,
       market: editAgentMarket,
       city: editAgentCity,
@@ -406,30 +428,16 @@ const AdminDashboard = () => {
       playbook_id: editAgentPlaybookId || null,
       licenseNumber: editAgentLicense,
       emergencyName: editAgentEmergencyName,
-      emergencyPhone: editAgentEmergencyPhone
+      emergencyPhone: (editAgentEmergencyPhone || '').trim()
     };
 
     try {
-      const targetAgentId = cleanNewEmail !== cleanOldEmail ? cleanNewEmail : editingAgent.id;
       if (cleanNewEmail !== cleanOldEmail) {
-        await adminChangeAgentEmail(cleanOldEmail, cleanNewEmail, profileUpdates, editAgentName);
-        if (editAgentStatus) {
-          await updateAgentStatus(cleanNewEmail, editAgentStatus);
-        }
+        await adminChangeAgentEmail(cleanOldEmail, cleanNewEmail, profileUpdates, editAgentName, editAgentStatus);
         setActionSuccessMsg(`Successfully updated profile and changed login email to ${cleanNewEmail}`);
       } else {
-        await adminUpdateAgent(editingAgent.id, editAgentName, profileUpdates);
-        if (editAgentStatus) {
-          await updateAgentStatus(editingAgent.id, editAgentStatus);
-        }
+        await adminUpdateAgent(editingAgent.id, editAgentName, profileUpdates, editAgentStatus);
         setActionSuccessMsg(`Updated contact information for ${editAgentName || editingAgent.id}`);
-      }
-      if (editAgentPlaybookId && typeof assignPlaybookToAgent === 'function') {
-        try {
-          await assignPlaybookToAgent(targetAgentId, editAgentPlaybookId);
-        } catch (pbErr) {
-          console.debug('Failed to assign playbook:', pbErr);
-        }
       }
       setEditingAgent(null);
       setTimeout(() => setActionSuccessMsg(''), 4000);
@@ -488,6 +496,7 @@ const AdminDashboard = () => {
 
   const [newAgentEmail, setNewAgentEmail] = useState('');
   const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentPhone, setNewAgentPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState('agent');
   
   // Sponsor fields - initialized from global settings
@@ -1310,10 +1319,11 @@ const AdminDashboard = () => {
   const handleAddAgent = async (e) => {
     e.preventDefault();
     const normalizedEmail = newAgentEmail.toLowerCase().trim();
+    const cleanPhone = newAgentPhone.trim();
     if (normalizedEmail && newAgentName) {
       if (newUserRole === 'admin') {
         try {
-          await saveAdminUser(normalizedEmail, newAgentName, newAgentPassword);
+          await saveAdminUser(normalizedEmail, newAgentName, newAgentPassword, cleanPhone);
           await fetchAdmins();
           setActionSuccessMsg(`Admin ${newAgentName} added successfully!`);
           setTimeout(() => setActionSuccessMsg(''), 4000);
@@ -1322,8 +1332,7 @@ const AdminDashboard = () => {
           return;
         }
       } else if (newUserRole === 'guest') {
-        await addAgent(normalizedEmail, newAgentName, null, null, newAgentPassword);
-        await updateAgentStatus(normalizedEmail, 'guest');
+        await addAgent(normalizedEmail, newAgentName, null, null, newAgentPassword, cleanPhone, 'guest');
         setActionSuccessMsg(`Guest account for ${newAgentName} created successfully!`);
         setTimeout(() => setActionSuccessMsg(''), 4000);
       } else {
@@ -1332,13 +1341,14 @@ const AdminDashboard = () => {
         if (coSponsorName) {
           coSponsorData = { name: coSponsorName, phone: coSponsorPhone, email: coSponsorEmail };
         }
-        await addAgent(normalizedEmail, newAgentName, sponsorData, coSponsorData, newAgentPassword);
+        await addAgent(normalizedEmail, newAgentName, sponsorData, coSponsorData, newAgentPassword, cleanPhone, 'onboarding');
         setActionSuccessMsg(`Agent ${newAgentName} invited successfully!`);
         setTimeout(() => setActionSuccessMsg(''), 4000);
       }
       
       setNewAgentEmail('');
       setNewAgentName('');
+      setNewAgentPhone('');
       setNewAgentPassword('');
       setCoSponsorName('');
       setCoSponsorPhone('');
@@ -1540,7 +1550,7 @@ const AdminDashboard = () => {
               <form onSubmit={handleAddAgent} style={styles.addForm}>
                 <div style={styles.formSection}>
                   <h4 className="text-sm font-semibold mb-2 text-dark-navy">User Details</h4>
-                  <div style={{...styles.formGrid, gridTemplateColumns: '1fr 1fr 1fr'}}>
+                  <div style={{...styles.formGrid, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))'}}>
                     <select style={styles.input} value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
                       <option value="agent">Agent (Full Syndicate)</option>
                       <option value="guest">Guest User (Classroom Only)</option>
@@ -1548,6 +1558,7 @@ const AdminDashboard = () => {
                     </select>
                     <input type="text" placeholder="Full Name" style={styles.input} value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} required />
                     <input type="email" placeholder="Email Address" style={styles.input} value={newAgentEmail} onChange={(e) => setNewAgentEmail(e.target.value)} required />
+                    <input type="tel" placeholder="Phone Number (Optional)" style={styles.input} value={newAgentPhone} onChange={(e) => setNewAgentPhone(e.target.value)} />
                   </div>
                 </div>
 
@@ -1915,6 +1926,7 @@ const AdminDashboard = () => {
                                   <button 
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      const initialMarket = a.profile?.market || getAgentMarket(a);
                                       setEditingAgent(a);
                                       setEditAgentName(a.name || '');
                                       setEditAgentEmail(a.id || a.profile?.email || '');
@@ -1922,10 +1934,10 @@ const AdminDashboard = () => {
                                       setEditAgentPhone(a.profile?.phone || a.phone || '');
                                       setEditAgentAltPhone(a.profile?.altPhone || '');
                                       setEditAgentAddress(a.profile?.address || '');
-                                      setEditAgentMarket(a.profile?.market || getAgentMarket(a));
-                                      setEditAgentCity(a.profile?.city || 'El Paso');
-                                      setEditAgentState(a.profile?.state || 'TX');
-                                      setEditAgentStatus(a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding'));
+                                      setEditAgentMarket(initialMarket);
+                                      setEditAgentCity(a.profile?.city || (initialMarket === 'el_paso' ? 'El Paso' : ''));
+                                      setEditAgentState(a.profile?.state || (initialMarket === 'out_of_state' ? '' : 'TX'));
+                                      setEditAgentStatus(a.status || (a.profile?.role === 'Administrator' ? 'admin' : (a.profile?.role === 'Flex Agent' || a.profile?.team_subrole === 'flex_agent') ? 'flex_agent' : (a.profile?.role === 'Team Agent') ? 'team_agent' : (a.role === 'guest' || a.profile?.role === 'Guest') ? 'guest' : 'onboarding'));
                                       setEditAgentTeamSubrole(a.profile?.team_subrole || 'team_agent');
                                       setEditAgentPlaybookId(a.profile?.playbook_id || '');
                                       setEditAgentLicense(a.profile?.licenseNumber || '');
@@ -2123,7 +2135,20 @@ const AdminDashboard = () => {
                             <label style={styles.label}>Market Territory</label>
                             <select
                               value={editAgentMarket}
-                              onChange={(e) => setEditAgentMarket(e.target.value)}
+                              onChange={(e) => {
+                                const nextMarket = e.target.value;
+                                setEditAgentMarket(nextMarket);
+                                if (nextMarket === 'el_paso') {
+                                  if (!editAgentCity.trim()) setEditAgentCity('El Paso');
+                                  if (!editAgentState.trim()) setEditAgentState('TX');
+                                } else if (nextMarket === 'texas_other') {
+                                  if (editAgentCity.trim().toLowerCase() === 'el paso') setEditAgentCity('');
+                                  setEditAgentState('TX');
+                                } else if (nextMarket === 'out_of_state') {
+                                  if (editAgentCity.trim().toLowerCase() === 'el paso') setEditAgentCity('');
+                                  if (editAgentState.trim().toUpperCase() === 'TX') setEditAgentState('');
+                                }
+                              }}
                               style={styles.input}
                             >
                               <option value="el_paso">📍 El Paso (In-Market HQ)</option>
@@ -2140,7 +2165,20 @@ const AdminDashboard = () => {
                             <label style={styles.label}>Market Territory</label>
                             <select
                               value={editAgentMarket}
-                              onChange={(e) => setEditAgentMarket(e.target.value)}
+                              onChange={(e) => {
+                                const nextMarket = e.target.value;
+                                setEditAgentMarket(nextMarket);
+                                if (nextMarket === 'el_paso') {
+                                  if (!editAgentCity.trim()) setEditAgentCity('El Paso');
+                                  if (!editAgentState.trim()) setEditAgentState('TX');
+                                } else if (nextMarket === 'texas_other') {
+                                  if (editAgentCity.trim().toLowerCase() === 'el paso') setEditAgentCity('');
+                                  setEditAgentState('TX');
+                                } else if (nextMarket === 'out_of_state') {
+                                  if (editAgentCity.trim().toLowerCase() === 'el paso') setEditAgentCity('');
+                                  if (editAgentState.trim().toUpperCase() === 'TX') setEditAgentState('');
+                                }
+                              }}
                               style={styles.input}
                             >
                               <option value="el_paso">📍 El Paso (In-Market HQ)</option>

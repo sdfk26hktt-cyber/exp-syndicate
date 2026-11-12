@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { oldEmail, newEmail, requestedBy } = req.body || {};
+  const { oldEmail, newEmail, requestedBy, name, status, profileData, phases } = req.body || {};
 
   if (!oldEmail || !newEmail) {
     return res.status(400).json({ error: 'Both oldEmail and newEmail are required' });
@@ -84,12 +84,25 @@ export default async function handler(req, res) {
       console.warn('Error fetching old agent data:', fetchErr);
     }
 
+    const effectiveStatus = status || oldAgentData?.status || 'onboarding';
+    const friendlyRole = effectiveStatus === 'guest' ? 'Guest'
+      : effectiveStatus === 'admin' ? 'Administrator'
+      : effectiveStatus === 'flex_agent' ? 'Flex Agent'
+      : effectiveStatus === 'team_agent' ? 'Team Agent'
+      : effectiveStatus === 'onboarding' ? 'Onboarding Agent'
+      : (profileData?.role || oldAgentData?.profile?.role || 'Agent');
+
     if (oldAgentData) {
       const newAgentRecord = {
         ...oldAgentData,
         id: safeNewEmail,
+        name: (typeof name === 'string' && name.trim()) ? name.trim() : oldAgentData.name,
+        ...(status ? { status } : {}),
+        ...(phases !== undefined ? { phases } : {}),
         profile: {
           ...(oldAgentData.profile || {}),
+          ...(profileData || {}),
+          ...(status ? { role: friendlyRole } : {}),
           email: safeNewEmail
         }
       };
@@ -101,7 +114,7 @@ export default async function handler(req, res) {
       }
 
       // Delete old agent record
-      const { error: delErr } = await adminClient.from('agents').delete().ilike('id', safeOldEmail);
+      const { error: delErr } = await adminClient.from('agents').delete().eq('id', oldAgentData.id);
       if (delErr) {
         console.warn('Could not delete old agent record:', delErr);
       }
@@ -109,10 +122,14 @@ export default async function handler(req, res) {
       // If no agent record existed under old email, create one for new email
       await adminClient.from('agents').upsert([{
         id: safeNewEmail,
-        name: safeNewEmail.split('@')[0],
-        status: 'onboarding',
-        role: 'agent',
-        profile: { email: safeNewEmail },
+        name: (typeof name === 'string' && name.trim()) ? name.trim() : safeNewEmail.split('@')[0],
+        status: effectiveStatus,
+        ...(phases !== undefined ? { phases } : {}),
+        profile: {
+          ...(profileData || {}),
+          role: friendlyRole,
+          email: safeNewEmail
+        },
         created_at: new Date().toISOString()
       }]);
     }

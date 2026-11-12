@@ -122,6 +122,46 @@ function apiDevPlugin() {
         }
       });
 
+      server.middlewares.use('/api/admin/update-agent', async (req, res) => {
+        try {
+          if (req.method === 'POST') {
+            req.body = await parseJsonBody(req);
+          }
+          res.status = (code) => { res.statusCode = code; return res; };
+          res.json = (data) => {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(data));
+            return res;
+          };
+          const { default: updateAgentHandler } = await import('./api/admin/update-agent.js');
+          await updateAgentHandler(req, res);
+        } catch (err) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+
+      server.middlewares.use('/api/admin/update-agent-email', async (req, res) => {
+        try {
+          if (req.method === 'POST') {
+            req.body = await parseJsonBody(req);
+          }
+          res.status = (code) => { res.statusCode = code; return res; };
+          res.json = (data) => {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(data));
+            return res;
+          };
+          const { default: updateEmailHandler } = await import('./api/admin/update-agent-email.js');
+          await updateEmailHandler(req, res);
+        } catch (err) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+
       server.middlewares.use('/api/calendar', async (req, res) => {
         try {
           res.status = (code) => { res.statusCode = code; return res; };

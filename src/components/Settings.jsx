@@ -79,9 +79,9 @@ const Settings = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
-  // Load agent/guest data if they exist
+  // Load agent/guest/admin data if they exist
   useEffect(() => {
-    if ((currentUser?.role === 'agent' || currentUser?.role === 'guest') && currentAgentData) {
+    if (currentUser && currentAgentData) {
       setProfileName(currentAgentData.name || currentUser.name || '');
       setProfileEmail(currentAgentData.id || currentUser.email || '');
       const p = currentAgentData.profile || {};
@@ -104,21 +104,10 @@ const Settings = () => {
       setProfileBirthday(p.birthday || '');
       setProfileInterests(p.interests || '');
       setProfileGoals(p.goals || '');
-    } else if (currentUser?.role === 'guest' && !currentAgentData) {
+    } else if (currentUser) {
       setProfileName(currentUser.name || '');
       setProfileEmail(currentUser.email || '');
       setProfilePhone(currentUser.phone || '');
-    } else if (currentUser?.role === 'admin') {
-      setProfileName(currentUser.name || '');
-      setProfileEmail(currentUser.email || '');
-      const p = currentAgentData?.profile || {};
-      setProfilePhone(p.phone || '');
-      setProfileAltPhone(p.altPhone || '');
-      setProfileAddress(p.address || '');
-      setProfileMarket(p.market || 'el_paso');
-      setProfileCity(p.city || 'El Paso');
-      setProfileState(p.state || 'TX');
-      setProfilePreferredContact(p.preferredContact || 'phone');
     }
   }, [currentUser, currentAgentData]);
 
@@ -128,10 +117,10 @@ const Settings = () => {
     setSaveMessage('');
     
     try {
-      if (currentUser?.role === 'agent' || currentUser?.role === 'guest') {
+      if (currentUser) {
         await updateAgentProfile({
-          phone: profilePhone,
-          altPhone: profileAltPhone,
+          phone: (profilePhone || '').trim(),
+          altPhone: (profileAltPhone || '').trim(),
           address: profileAddress,
           market: profileMarket,
           city: profileCity,
@@ -139,7 +128,7 @@ const Settings = () => {
           team_subrole: profileTeamSubrole,
           preferredContact: profilePreferredContact,
           emergencyName: profileEmergencyName,
-          emergencyPhone: profileEmergencyPhone,
+          emergencyPhone: (profileEmergencyPhone || '').trim(),
           emergencyRelation: profileEmergencyRelation,
           birthday: profileBirthday,
           licenseNumber: profileLicense,

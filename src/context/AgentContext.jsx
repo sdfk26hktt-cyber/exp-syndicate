@@ -297,12 +297,27 @@ export const AgentProvider = ({ children }) => {
   };
 
   const assignPlaybookToAgent = async (agentId, playbookId) => {
-    const targetAgent = agents.find(a => a.id?.toLowerCase() === agentId?.toLowerCase());
+    const cleanId = (agentId || '').trim();
+    const targetAgent = agents.find(a => a.id?.toLowerCase().trim() === cleanId.toLowerCase());
     const selectedPb = playbookCatalog.find(p => p.id === playbookId) || playbookCatalog[0];
-    if (!targetAgent || !selectedPb) return;
+    if (!selectedPb) return;
+
+    let freshRow = null;
+    if (supabase && cleanId) {
+      try {
+        const { data } = await supabase.from('agents').select('*').ilike('id', cleanId).maybeSingle();
+        if (data) freshRow = data;
+      } catch (err) {
+        console.debug('assignPlaybookToAgent lookup fallback:', err);
+      }
+    }
+
+    const baseAgent = freshRow || targetAgent;
+    if (!baseAgent) return;
+    const actualId = baseAgent.id || cleanId;
 
     const updatedProfile = {
-      ...(targetAgent.profile || {}),
+      ...(baseAgent.profile || {}),
       playbook_id: playbookId
     };
 
@@ -310,14 +325,14 @@ export const AgentProvider = ({ children }) => {
     const updatedPhases = selectedPb.phases.map(p => ({
       ...p,
       items: p.items.map(item => {
-        const priorPhase = (targetAgent.phases || []).find(ph => ph.id === p.id);
+        const priorPhase = (baseAgent.phases || []).find(ph => ph.id === p.id);
         const priorItem = priorPhase?.items?.find(it => it.id === item.id);
         return priorItem ? { ...item, completed: priorItem.completed, currentStepIndex: priorItem.currentStepIndex || 0 } : item;
       })
     }));
 
     const updatedAgent = {
-      ...targetAgent,
+      ...baseAgent,
       profile: updatedProfile,
       phases: updatedPhases
     };
@@ -327,14 +342,14 @@ export const AgentProvider = ({ children }) => {
         await supabase.from('agents').update({
           profile: updatedProfile,
           phases: updatedPhases
-        }).ilike('id', agentId);
+        }).eq('id', actualId);
       } catch (err) {
         console.warn('Error saving assigned playbook to agent in Supabase:', err);
       }
     }
 
-    setAgents(prev => prev.map(a => a.id?.toLowerCase() === agentId?.toLowerCase() ? updatedAgent : a));
-    if (currentAgentData?.id?.toLowerCase() === agentId?.toLowerCase()) {
+    setAgents(prev => prev.map(a => a.id?.toLowerCase().trim() === cleanId.toLowerCase() ? updatedAgent : a));
+    if (currentAgentData?.id?.toLowerCase().trim() === cleanId.toLowerCase()) {
       setCurrentAgentData(updatedAgent);
       setPhases(updatedPhases);
     }
@@ -432,7 +447,17 @@ export const AgentProvider = ({ children }) => {
       const settings = JSON.parse(localStorage.getItem('mockAdminSettings'));
       if (settings) setAdminSettings(settings);
       
-      if (currentUser?.role === 'agent' || currentUser?.role === 'guest') {
+      if (currentUser?.role === 'admin') {
+        const myEmail = (currentUser.email || currentUser.id || '').toLowerCase().trim();
+        const myData = db.find(a =>
+          a.id?.toLowerCase().trim() === myEmail ||
+          a.profile?.email?.toLowerCase().trim() === myEmail
+        );
+        if (myData) {
+          setXp(myData.xp || 0);
+          setCurrentAgentData(myData);
+        }
+      } else if (currentUser?.role === 'agent' || currentUser?.role === 'guest') {
         const myEmail = (currentUser.email || currentUser.id || '').toLowerCase().trim();
         const myData = db.find(a => 
           a.id?.toLowerCase().trim() === myEmail || 
@@ -713,26 +738,42 @@ export const AgentProvider = ({ children }) => {
     );
   };
 
-  const addAgent = async (email, name, sponsorData, coSponsorData, initialPassword) => {
+  const addAgent = async (email, name, sponsorData, coSponsorData, initialPassword, phone = '', roleStatus = 'onboarding') => {
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const cleanPhone = (phone || '').trim();
+    const friendlyRole = roleStatus === 'guest' ? 'Guest'
+      : roleStatus === 'admin' ? 'Administrator'
+      : roleStatus === 'flex_agent' ? 'Flex Agent'
+      : roleStatus === 'team_agent' ? 'Team Agent'
+      : 'Onboarding Agent';
+
     const newAgent = { 
-      id: email, 
+      id: cleanEmail, 
       name: name, 
       xp: 0, 
-      phases: globalPlaybooks,
-      sponsor: sponsorData || adminSettings.defaultSponsor,
-      co_sponsor: coSponsorData || null,
-      profile: defaultProfile,
-      status: 'onboarding',
-      current_phase: 'col-1'
+      phases: roleStatus === 'guest' ? [] : globalPlaybooks,
+      sponsor: roleStatus === 'guest' ? null : (sponsorData || adminSettings.defaultSponsor),
+      co_sponsor: roleStatus === 'guest' ? null : (coSponsorData || null),
+      profile: {
+        ...defaultProfile,
+        role: friendlyRole,
+        email: cleanEmail,
+        phone: cleanPhone
+      },
+      status: roleStatus,
+      current_phase: roleStatus === 'guest' ? null : 'col-1'
     };
     
-    await supabase.from('agents').insert([newAgent]);
-    loadAgents();
+    const { error } = await supabase.from('agents').upsert([newAgent], { onConflict: 'id' });
+    if (error) {
+      console.error('Error creating agent record:', error);
+    }
+    await loadAgents();
 
     if (initialPassword) {
       try {
         await supabase.auth.signUp({
-          email: email,
+          email: cleanEmail,
           password: initialPassword
         });
       } catch (authErr) {
@@ -746,7 +787,7 @@ export const AgentProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email, name, password: initialPassword })
+        body: JSON.stringify({ email: cleanEmail, name, password: initialPassword })
       });
     } catch (err) {
       console.error('Failed to trigger invite email:', err);
@@ -760,43 +801,212 @@ export const AgentProvider = ({ children }) => {
   };
 
   const updateAgentProfile = async (profileData, newName) => {
-    if (!currentUser || (currentUser.role !== 'agent' && currentUser.role !== 'guest') || !currentAgentData) return;
-    
-    const updatedProfile = { ...currentAgentData.profile, ...profileData };
-    const updatedName = newName || currentAgentData.name;
-    
-    const { data } = await supabase.from('agents')
-      .update({ name: updatedName, profile: updatedProfile })
-      .ilike('id', currentAgentData.id)
-      .select()
-      .single();
-      
-    if (data) {
-      setCurrentAgentData(data);
+    if (!currentUser) return;
+
+    const myEmail = (currentAgentData?.id || currentUser.email || currentUser.id || '').trim();
+    if (!myEmail) return;
+
+    let freshRow = null;
+    try {
+      const { data } = await supabase.from('agents').select('*').ilike('id', myEmail).maybeSingle();
+      if (data) freshRow = data;
+    } catch (err) {
+      console.debug('updateAgentProfile lookup fallback:', err);
     }
-    loadAgents();
+
+    const baseAgent = freshRow || currentAgentData;
+    const actualId = baseAgent?.id || myEmail.toLowerCase();
+    const updatedProfile = {
+      ...(defaultProfile || {}),
+      ...(baseAgent?.profile || {}),
+      ...profileData
+    };
+    const updatedName = newName || baseAgent?.name || currentUser.name || actualId.split('@')[0];
+
+    let savedRecord = null;
+    if (baseAgent?.id) {
+      const { data, error } = await supabase.from('agents')
+        .update({ name: updatedName, profile: updatedProfile })
+        .eq('id', actualId)
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      savedRecord = data || { ...baseAgent, name: updatedName, profile: updatedProfile };
+    } else {
+      const fallbackStatus = currentUser.role === 'admin' ? 'admin' : currentUser.role === 'guest' ? 'guest' : 'onboarding';
+      const newRow = {
+        id: actualId,
+        name: updatedName,
+        xp: 0,
+        status: fallbackStatus,
+        phases: fallbackStatus === 'guest' ? [] : globalPlaybooks,
+        profile: {
+          ...updatedProfile,
+          email: actualId,
+          role: fallbackStatus === 'admin' ? 'Administrator' : fallbackStatus === 'guest' ? 'Guest' : 'Onboarding Agent'
+        }
+      };
+      const { data, error } = await supabase.from('agents')
+        .upsert([newRow], { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      savedRecord = data || newRow;
+    }
+
+    if (savedRecord) {
+      setCurrentAgentData(savedRecord);
+      setAgents(prev => {
+        const exists = prev.some(a => a.id?.toLowerCase().trim() === actualId.toLowerCase().trim());
+        if (exists) {
+          return prev.map(a => a.id?.toLowerCase().trim() === actualId.toLowerCase().trim() ? savedRecord : a);
+        }
+        return [...prev, savedRecord];
+      });
+    }
+
+    // Keep emulated session phone in sync if active
+    try {
+      const mockSess = localStorage.getItem('mockSession');
+      if (mockSess) {
+        const parsed = JSON.parse(mockSess);
+        if (parsed && (parsed.email || parsed.id || '').toLowerCase().trim() === actualId.toLowerCase().trim()) {
+          parsed.name = updatedName;
+          if (profileData?.phone !== undefined) parsed.phone = profileData.phone;
+          localStorage.setItem('mockSession', JSON.stringify(parsed));
+        }
+      }
+    } catch (e) {
+      console.debug(e);
+    }
+
+    await loadAgents();
   };
 
-  const adminUpdateAgent = async (agentId, newName, profileData) => {
+  const adminUpdateAgent = async (agentId, newName, profileData, newStatus = '') => {
     if (!currentUser || currentUser.role !== 'admin') return;
-    
-    const targetAgent = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
-    if (!targetAgent) return;
-    
-    const updatedProfile = { ...(targetAgent.profile || {}), ...profileData };
-    const updatedName = newName || targetAgent.name;
-    
-    await supabase.from('agents')
-      .update({ name: updatedName, profile: updatedProfile })
-      .ilike('id', agentId);
-      
-    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
-      setCurrentAgentData({ ...currentAgentData, name: updatedName, profile: updatedProfile });
+
+    const cleanId = (agentId || '').trim();
+    if (!cleanId) return;
+
+    const targetAgent = agents.find(a => a.id?.toLowerCase().trim() === cleanId.toLowerCase());
+    let freshRow = null;
+    try {
+      const { data } = await supabase.from('agents').select('*').ilike('id', cleanId).maybeSingle();
+      if (data) freshRow = data;
+    } catch (err) {
+      console.debug('adminUpdateAgent lookup fallback:', err);
     }
-    loadAgents();
+
+    const baseAgent = freshRow || targetAgent;
+    const actualId = baseAgent?.id || cleanId;
+    const effectiveStatus = newStatus || baseAgent?.status || 'onboarding';
+    const friendlyRole = effectiveStatus === 'guest' ? 'Guest'
+      : effectiveStatus === 'admin' ? 'Administrator'
+      : effectiveStatus === 'flex_agent' ? 'Flex Agent'
+      : effectiveStatus === 'team_agent' ? 'Team Agent'
+      : effectiveStatus === 'onboarding' ? 'Onboarding Agent'
+      : (profileData?.role || baseAgent?.profile?.role || 'Agent');
+
+    const updatedProfile = {
+      ...(baseAgent?.profile || {}),
+      ...profileData,
+      ...(newStatus ? { role: friendlyRole } : {})
+    };
+    const updatedName = newName || baseAgent?.name || actualId.split('@')[0];
+
+    const updatePayload = {
+      name: updatedName,
+      profile: updatedProfile,
+      ...(newStatus ? { status: newStatus } : {})
+    };
+
+    // If a playbook was explicitly assigned, merge its phases in the same atomic update
+    if (profileData?.playbook_id) {
+      const selectedPb = playbookCatalog.find(p => p.id === profileData.playbook_id);
+      if (selectedPb && Array.isArray(selectedPb.phases)) {
+        updatePayload.phases = selectedPb.phases.map(p => ({
+          ...p,
+          items: p.items.map(item => {
+            const priorPhase = (baseAgent?.phases || []).find(ph => ph.id === p.id);
+            const priorItem = priorPhase?.items?.find(it => it.id === item.id);
+            return priorItem ? { ...item, completed: priorItem.completed, currentStepIndex: priorItem.currentStepIndex || 0 } : item;
+          })
+        }));
+      }
+    }
+
+    let savedRow = null;
+
+    // 1. Try serverless admin endpoint first (uses Service Role Key on Vercel to bypass any RLS restrictions)
+    try {
+      const apiRes = await fetch('/api/admin/update-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: actualId,
+          name: updatedName,
+          status: newStatus || undefined,
+          profile: updatedProfile,
+          phases: updatePayload.phases,
+          requestedBy: currentUser.email || currentUser.id
+        })
+      });
+      if (apiRes.ok) {
+        const json = await apiRes.json();
+        if (json?.agent) savedRow = json.agent;
+      }
+    } catch (apiErr) {
+      console.debug('Serverless /api/admin/update-agent unavailable, falling back to direct Supabase update:', apiErr);
+    }
+
+    // 2. Fallback to direct verified Supabase update if serverless endpoint was unavailable
+    if (!savedRow) {
+      if (baseAgent?.id) {
+        const { data, error } = await supabase.from('agents')
+          .update(updatePayload)
+          .eq('id', actualId)
+          .select()
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) {
+          throw new Error(`Could not save changes for "${actualId}" (0 database rows updated).`);
+        }
+        savedRow = data;
+      } else {
+        const insertRow = {
+          id: actualId.toLowerCase(),
+          xp: 0,
+          phases: updatePayload.phases || globalPlaybooks,
+          status: effectiveStatus,
+          ...updatePayload
+        };
+        const { data, error } = await supabase.from('agents')
+          .upsert([insertRow], { onConflict: 'id' })
+          .select()
+          .maybeSingle();
+        if (error) throw error;
+        savedRow = data || insertRow;
+      }
+    }
+
+    const mergedAgent = savedRow || {
+      ...(baseAgent || { id: actualId, xp: 0 }),
+      ...updatePayload
+    };
+
+    setAgents(prev => prev.map(a => a.id?.toLowerCase().trim() === cleanId.toLowerCase() ? mergedAgent : a));
+    if (currentAgentData?.id?.toLowerCase().trim() === cleanId.toLowerCase()) {
+      setCurrentAgentData(mergedAgent);
+      if (mergedAgent.phases) {
+        setPhases(mergedAgent.phases);
+      }
+    }
+    await loadAgents();
+    return mergedAgent;
   };
 
-  const adminChangeAgentEmail = async (oldEmail, newEmail, profileData = {}, newName = '') => {
+  const adminChangeAgentEmail = async (oldEmail, newEmail, profileData = {}, newName = '', newStatus = '') => {
     if (!currentUser || currentUser.role !== 'admin') {
       throw new Error("Unauthorized: Only administrators can update agent emails.");
     }
@@ -808,11 +1018,34 @@ export const AgentProvider = ({ children }) => {
     }
 
     if (safeOldEmail === safeNewEmail) {
-      // Just update profile and name if email unchanged
-      return adminUpdateAgent(safeOldEmail, newName, profileData);
+      // Just update profile, name, and status atomically if email unchanged
+      return adminUpdateAgent(oldEmail, newName, profileData, newStatus);
     }
 
-    // 1. Try serverless endpoint first
+    const friendlyRole = newStatus === 'guest' ? 'Guest'
+      : newStatus === 'admin' ? 'Administrator'
+      : newStatus === 'flex_agent' ? 'Flex Agent'
+      : newStatus === 'team_agent' ? 'Team Agent'
+      : newStatus === 'onboarding' ? 'Onboarding Agent'
+      : profileData?.role;
+
+    const existingSource = agents.find(a => a.id?.toLowerCase().trim() === safeOldEmail);
+    let computedPhases = undefined;
+    if (profileData?.playbook_id) {
+      const selectedPb = playbookCatalog.find(p => p.id === profileData.playbook_id);
+      if (selectedPb && Array.isArray(selectedPb.phases)) {
+        computedPhases = selectedPb.phases.map(p => ({
+          ...p,
+          items: p.items.map(item => {
+            const priorPhase = (existingSource?.phases || []).find(ph => ph.id === p.id);
+            const priorItem = priorPhase?.items?.find(it => it.id === item.id);
+            return priorItem ? { ...item, completed: priorItem.completed, currentStepIndex: priorItem.currentStepIndex || 0 } : item;
+          })
+        }));
+      }
+    }
+
+    // 1. Try serverless endpoint first (handles email + profile + status + phases atomically)
     try {
       const response = await fetch('/api/admin/update-agent-email', {
         method: 'POST',
@@ -820,19 +1053,20 @@ export const AgentProvider = ({ children }) => {
         body: JSON.stringify({
           oldEmail: safeOldEmail,
           newEmail: safeNewEmail,
+          name: newName,
+          status: newStatus || undefined,
+          profileData: {
+            ...profileData,
+            ...(friendlyRole ? { role: friendlyRole } : {}),
+            email: safeNewEmail
+          },
+          phases: computedPhases,
           requestedBy: currentUser.email || currentUser.id
         })
       });
 
       if (response.ok) {
         const result = await response.json();
-        // If we also have profileData or newName, update them on the new record
-        if (Object.keys(profileData).length > 0 || newName) {
-          const targetAgent = agents.find(a => a.id?.toLowerCase() === safeOldEmail) || {};
-          const updatedProfile = { ...(targetAgent.profile || {}), ...profileData, email: safeNewEmail };
-          const updatedName = newName || targetAgent.name || safeNewEmail.split('@')[0];
-          await supabase.from('agents').update({ name: updatedName, profile: updatedProfile }).ilike('id', safeNewEmail);
-        }
         await loadAgents();
         return result;
       } else {
@@ -854,23 +1088,45 @@ export const AgentProvider = ({ children }) => {
       throw new Error(`An account with email "${safeNewEmail}" already exists in the syndicate.`);
     }
 
-    const targetAgent = agents.find(a => a.id?.toLowerCase() === safeOldEmail);
+    const targetAgent = agents.find(a => a.id?.toLowerCase().trim() === safeOldEmail);
     const { data: oldAgentData } = await supabase.from('agents').select('*').ilike('id', safeOldEmail).maybeSingle();
     const sourceData = oldAgentData || targetAgent;
 
     if (sourceData) {
-      const updatedProfile = { ...(sourceData.profile || {}), ...profileData, email: safeNewEmail };
+      const updatedProfile = {
+        ...(sourceData.profile || {}),
+        ...profileData,
+        ...(friendlyRole ? { role: friendlyRole } : {}),
+        email: safeNewEmail
+      };
       const updatedName = newName || sourceData.name || safeNewEmail.split('@')[0];
+      let updatedPhases = sourceData.phases;
+      if (profileData?.playbook_id) {
+        const selectedPb = playbookCatalog.find(p => p.id === profileData.playbook_id);
+        if (selectedPb && Array.isArray(selectedPb.phases)) {
+          updatedPhases = selectedPb.phases.map(p => ({
+            ...p,
+            items: p.items.map(item => {
+              const priorPhase = (sourceData.phases || []).find(ph => ph.id === p.id);
+              const priorItem = priorPhase?.items?.find(it => it.id === item.id);
+              return priorItem ? { ...item, completed: priorItem.completed, currentStepIndex: priorItem.currentStepIndex || 0 } : item;
+            })
+          }));
+        }
+      }
       const newAgentRecord = {
         ...sourceData,
         id: safeNewEmail,
         name: updatedName,
+        ...(newStatus ? { status: newStatus } : {}),
+        ...(updatedPhases !== undefined ? { phases: updatedPhases } : {}),
         profile: updatedProfile
       };
 
-      await supabase.from('agents').upsert([newAgentRecord]);
-      if (safeOldEmail !== safeNewEmail) {
-        await supabase.from('agents').delete().ilike('id', safeOldEmail);
+      const { error: upsertErr } = await supabase.from('agents').upsert([newAgentRecord]);
+      if (upsertErr) throw upsertErr;
+      if (safeOldEmail !== safeNewEmail && sourceData.id) {
+        await supabase.from('agents').delete().eq('id', sourceData.id);
       }
     }
 
@@ -957,8 +1213,18 @@ export const AgentProvider = ({ children }) => {
   };
 
   const updateAgentStatus = async (agentId, newStatus) => {
-    const target = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
-    const existingProfile = target?.profile || {};
+    const cleanId = (agentId || '').trim();
+    const target = agents.find(a => a.id?.toLowerCase().trim() === cleanId.toLowerCase());
+    let freshRow = null;
+    try {
+      const { data } = await supabase.from('agents').select('id, profile').ilike('id', cleanId).maybeSingle();
+      if (data) freshRow = data;
+    } catch (err) {
+      console.debug('updateAgentStatus lookup fallback:', err);
+    }
+
+    const actualId = freshRow?.id || target?.id || cleanId;
+    const existingProfile = freshRow?.profile || target?.profile || {};
     const friendlyRole = newStatus === 'guest' ? 'Guest'
       : newStatus === 'admin' ? 'Administrator'
       : newStatus === 'flex_agent' ? 'Flex Agent'
@@ -978,25 +1244,56 @@ export const AgentProvider = ({ children }) => {
 
     // Optimistically update local agents state for immediate UI responsiveness
     setAgents(prev => prev.map(a => 
-      a.id?.toLowerCase() === agentId.toLowerCase() 
+      a.id?.toLowerCase().trim() === cleanId.toLowerCase() 
         ? { ...a, status: newStatus, profile: updatedProfile } 
         : a
     ));
 
-    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
+    if (currentAgentData?.id?.toLowerCase().trim() === cleanId.toLowerCase()) {
       setCurrentAgentData(prev => ({ ...prev, status: newStatus, profile: updatedProfile }));
     }
 
-    const { error } = await supabase.from('agents').update(updatePayload).ilike('id', agentId);
-    if (error) {
-      console.error('Failed to update agent status:', error);
+    let updatedViaApi = false;
+    if (currentUser?.role === 'admin') {
+      try {
+        const apiRes = await fetch('/api/admin/update-agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: actualId,
+            status: newStatus,
+            profile: updatedProfile,
+            requestedBy: currentUser.email || currentUser.id
+          })
+        });
+        if (apiRes.ok) updatedViaApi = true;
+      } catch (_err) {
+        // fallback below
+      }
     }
-    loadAgents();
+
+    if (!updatedViaApi) {
+      const { error } = await supabase.from('agents').update(updatePayload).eq('id', actualId);
+      if (error) {
+        console.error('Failed to update agent status:', error);
+      }
+    }
+    await loadAgents();
   };
 
   const adminUpdateAgentRoleAndMarket = async (agentId, newStatus, teamSubrole, market) => {
-    const target = agents.find(a => a.id?.toLowerCase() === agentId.toLowerCase());
-    const existingProfile = target?.profile || {};
+    const cleanId = (agentId || '').trim();
+    const target = agents.find(a => a.id?.toLowerCase().trim() === cleanId.toLowerCase());
+    let freshRow = null;
+    try {
+      const { data } = await supabase.from('agents').select('id, profile').ilike('id', cleanId).maybeSingle();
+      if (data) freshRow = data;
+    } catch (err) {
+      console.debug('adminUpdateAgentRoleAndMarket lookup fallback:', err);
+    }
+
+    const actualId = freshRow?.id || target?.id || cleanId;
+    const existingProfile = freshRow?.profile || target?.profile || {};
     const friendlyRole = newStatus === 'guest' ? 'Guest'
       : newStatus === 'admin' ? 'Administrator'
       : newStatus === 'flex_agent' ? 'Flex Agent'
@@ -1018,20 +1315,20 @@ export const AgentProvider = ({ children }) => {
 
     // Optimistically update local agents state
     setAgents(prev => prev.map(a => 
-      a.id?.toLowerCase() === agentId.toLowerCase() 
+      a.id?.toLowerCase().trim() === cleanId.toLowerCase() 
         ? { ...a, ...(newStatus ? { status: newStatus } : {}), profile: updatedProfile } 
         : a
     ));
 
-    if (currentAgentData?.id?.toLowerCase() === agentId.toLowerCase()) {
+    if (currentAgentData?.id?.toLowerCase().trim() === cleanId.toLowerCase()) {
       setCurrentAgentData(prev => ({ ...prev, ...(newStatus ? { status: newStatus } : {}), profile: updatedProfile }));
     }
 
-    const { error } = await supabase.from('agents').update(updatePayload).ilike('id', agentId);
+    const { error } = await supabase.from('agents').update(updatePayload).eq('id', actualId);
     if (error) {
       console.error('Failed to update agent role and market:', error);
     }
-    loadAgents();
+    await loadAgents();
   };
 
   const updateAgentPhase = async (agentId, newPhaseId) => {
