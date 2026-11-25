@@ -44,6 +44,15 @@ const Sidebar = () => {
                   <span>Classroom</span>
                 </NavLink>
               </li>
+              <li>
+                <NavLink 
+                  to="/calendar" 
+                  style={({ isActive }) => isActive ? { ...styles.navLink, ...styles.navLinkActive } : styles.navLink}
+                >
+                  <Calendar size={20} />
+                  <span>Calendar</span>
+                </NavLink>
+              </li>
             </>
           ) : (
             <>

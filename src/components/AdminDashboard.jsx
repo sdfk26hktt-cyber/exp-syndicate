@@ -1553,7 +1553,7 @@ const AdminDashboard = () => {
                   <div style={{...styles.formGrid, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))'}}>
                     <select style={styles.input} value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
                       <option value="agent">Agent (Full Syndicate)</option>
-                      <option value="guest">Guest User (Classroom Only)</option>
+                      <option value="guest">Guest User (Classroom & Calendar)</option>
                       <option value="admin">Administrator</option>
                     </select>
                     <input type="text" placeholder="Full Name" style={styles.input} value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} required />

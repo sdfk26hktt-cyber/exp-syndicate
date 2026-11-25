@@ -269,10 +269,10 @@ const Settings = () => {
           <GraduationCap size={28} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
           <div>
             <div style={{ fontWeight: '700', color: 'var(--color-dark-navy)', fontSize: '0.95rem' }}>
-              Guest Account (Classroom Access)
+              Guest Account (Classroom & Calendar Access)
             </div>
             <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-              You are logged in as a guest with access to designated Syndicate training courses. You can manage your contact information and password below.
+              You are logged in as a guest with access to designated Syndicate training courses and the live training calendar. You can manage your contact information and password below.
             </div>
           </div>
         </div>

@@ -477,7 +477,7 @@ const SignIn = () => {
             }}>
               <GraduationCap size={24} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
               <div style={{ fontSize: '0.84rem', color: 'var(--color-dark-navy)', lineHeight: 1.4 }}>
-                <strong>Guest Access:</strong> Create your account to access our Syndicate Classroom trainings and designated videos.
+                <strong>Guest Access:</strong> Create your account to access our Syndicate Classroom trainings, live training calendar, and designated videos.
               </div>
             </div>
 

@@ -29,7 +29,7 @@ const ProtectedRoute = ({ children, role, allowGuest = false }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // Guest users are strictly limited to guest-allowed routes (Classroom & Settings)
+  // Guest users are strictly limited to guest-allowed routes (Classroom, Calendar & Settings)
   if (currentUser.role === 'guest' && !allowGuest) {
     return <Navigate to="/classroom" replace />;
   }
@@ -228,7 +228,7 @@ function App() {
                 <Route 
                   path="/calendar" 
                   element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowGuest={true}>
                       <AppLayout>
                         <FullCalendar />
                       </AppLayout>

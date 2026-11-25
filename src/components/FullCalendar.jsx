@@ -18,6 +18,7 @@ const FullCalendar = () => {
   const { events, addEvent, updateEvent, deleteEvent } = useCommunity();
   const { currentUser } = useAuth();
   const { currentAgentData } = useAgent();
+  const isGuest = currentUser?.role === 'guest';
   const userName = currentAgentData?.name || currentUser?.name || currentUser?.email || '';
   
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -310,6 +311,7 @@ const FullCalendar = () => {
   };
 
   const openSuggestModal = (initialDate = '', initialTime = '') => {
+    if (isGuest) return;
     setEditingEventId(null);
     setNewEventTitle('');
     setNewEventDate(initialDate || '');
@@ -383,10 +385,12 @@ const FullCalendar = () => {
                 <CalendarPlus size={18} />
                 Subscribe
               </button>
-              <button className="btn-primary" onClick={() => openSuggestModal()}>
-                <Plus size={18} />
-                {currentUser?.role === 'admin' ? 'Add Event' : 'Suggest Event'}
-              </button>
+              {!isGuest && (
+                <button className="btn-primary" onClick={() => openSuggestModal()}>
+                  <Plus size={18} />
+                  {currentUser?.role === 'admin' ? 'Add Event' : 'Suggest Event'}
+                </button>
+              )}
             </>
           )}
           <div style={{ position: 'relative' }}>
@@ -478,18 +482,18 @@ const FullCalendar = () => {
                       style={{
                         ...styles.dayCell, 
                         ...(isToday ? styles.todayCell : {}),
-                        cursor: isBulkMode ? 'default' : 'pointer'
+                        cursor: isBulkMode || isGuest ? 'default' : 'pointer'
                       }}
                       onClick={() => {
-                        if (!isBulkMode) {
+                        if (!isBulkMode && !isGuest) {
                           openSuggestModal(formattedDate);
                         }
                       }}
-                      title={!isBulkMode ? `Click to add event on ${formattedDate}` : undefined}
+                      title={!isBulkMode && !isGuest ? `Click to add event on ${formattedDate}` : undefined}
                     >
                       <div style={styles.dayCellHeader}>
                         <div style={styles.dayNumber}>{day}</div>
-                        {!isBulkMode && (
+                        {!isBulkMode && !isGuest && (
                           <button
                             type="button"
                             style={styles.addDayBtn}
@@ -598,7 +602,7 @@ const FullCalendar = () => {
                           <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
                             {d.toLocaleString('default', { weekday: 'short' })}
                           </div>
-                          {!isBulkMode && (
+                          {!isBulkMode && !isGuest && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -632,14 +636,14 @@ const FullCalendar = () => {
                           ...styles.dayCell, 
                           ...(isToday ? styles.todayCell : {}), 
                           minHeight: '400px',
-                          cursor: isBulkMode ? 'default' : 'pointer'
+                          cursor: isBulkMode || isGuest ? 'default' : 'pointer'
                         }}
                         onClick={() => {
-                          if (!isBulkMode) {
+                          if (!isBulkMode && !isGuest) {
                             openSuggestModal(formattedDate);
                           }
                         }}
-                        title={!isBulkMode ? `Click to add event on ${formattedDate}` : undefined}
+                        title={!isBulkMode && !isGuest ? `Click to add event on ${formattedDate}` : undefined}
                       >
                         <div style={styles.eventsWrapper}>
                           {dayEvents.map(evt => {
@@ -719,7 +723,7 @@ const FullCalendar = () => {
                 >
                   <span>{monthName} ({monthEvents.length})</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    {!isBulkMode && (
+                    {!isBulkMode && !isGuest && (
                       <button
                         type="button"
                         onClick={(e) => {

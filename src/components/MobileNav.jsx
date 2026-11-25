@@ -20,6 +20,14 @@ const MobileNav = () => {
         </NavLink>
 
         <NavLink 
+          to="/calendar" 
+          className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Calendar size={24} />
+          <span>Calendar</span>
+        </NavLink>
+
+        <NavLink 
           to="/settings" 
           className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}
         >
